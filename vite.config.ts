@@ -14,9 +14,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          // recharts and @zxing are pulled in via dynamic import(), so Rollup
+          // splits them automatically — forcing them here would be redundant.
           react: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          scanner: ['@zxing/browser', '@zxing/library'],
           motion: ['framer-motion'],
         },
       },

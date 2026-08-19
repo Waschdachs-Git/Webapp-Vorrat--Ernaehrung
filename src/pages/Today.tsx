@@ -1,17 +1,21 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Sparkles, AlarmClock, Shuffle } from 'lucide-react';
+import { Plus, Sparkles, AlarmClock, Shuffle, RotateCcw } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { CalorieRing } from '@/components/CalorieRing';
 import { MacroBars } from '@/components/MacroBars';
 import { LogFoodSheet } from '@/components/LogFoodSheet';
+import {
+  DiaryItemSheet,
+  type DiaryItemRef,
+} from '@/components/DiaryItemSheet';
 import { Button, Card, EmptyState } from '@/components/ui';
 import { useToday } from '@/hooks/useToday';
-import { defaultMealType } from '@/lib/actions';
+import { defaultMealType, repeatDiaryItem } from '@/lib/actions';
 import { formatTime } from '@/lib/date';
 import { buildRecommendations, type Recommendation } from '@/lib/recommendations';
-import type { DiaryEntry, MealType } from '@/db/types';
+import type { DiaryEntry, DiaryItem, MealType } from '@/db/types';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Frühstück',
@@ -23,6 +27,7 @@ const MEAL_LABELS: Record<MealType, string> = {
 export function Today(): ReactNode {
   const { targets, consumed, remaining, entries, profile } = useToday();
   const [logOpen, setLogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<DiaryItemRef | null>(null);
 
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const foods = useLiveQuery(() => db.foodsLocal.toArray(), []);
@@ -42,6 +47,22 @@ export function Today(): ReactNode {
       recentDiary: recentDiary ?? [],
     });
   }, [profile, remaining, inventory, foods, recipes, recentDiary]);
+
+  // "Zuletzt gegessen" – deduplicated by name, newest first.
+  const recentItems = useMemo<DiaryItem[]>(() => {
+    const seen = new Set<string>();
+    const out: DiaryItem[] = [];
+    for (const entry of recentDiary ?? []) {
+      for (const item of entry.items) {
+        const key = item.name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(item);
+        if (out.length >= 6) return out;
+      }
+    }
+    return out;
+  }, [recentDiary]);
 
   const todayLabel = new Date().toLocaleDateString('de-DE', {
     weekday: 'long',
@@ -88,6 +109,25 @@ export function Today(): ReactNode {
             </Button>
           </div>
 
+          {recentItems.length > 0 && (
+            <div className="no-scrollbar -mx-5 mb-3 flex gap-2 overflow-x-auto px-5">
+              {recentItems.map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => repeatDiaryItem(item, defaultMealType())}
+                  className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-medium text-text active:bg-surface-2"
+                >
+                  <RotateCcw size={14} className="text-accent" />
+                  {item.name}
+                  <span className="tnum text-faint">
+                    {item.amount} {item.unit}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {entries.length === 0 ? (
             <Card>
               <EmptyState
@@ -108,9 +148,18 @@ export function Today(): ReactNode {
                     <div className="flex flex-col gap-2">
                       {byMeal[meal].map((entry) =>
                         entry.items.map((item, idx) => (
-                          <div
+                          <button
                             key={`${entry.id}-${idx}`}
-                            className="flex items-center justify-between"
+                            type="button"
+                            onClick={() =>
+                              entry.id !== undefined &&
+                              setEditTarget({
+                                entryId: entry.id,
+                                itemIndex: idx,
+                                item,
+                              })
+                            }
+                            className="-mx-2 flex min-h-[44px] items-center justify-between rounded-xl px-2 text-left active:bg-surface-2"
                           >
                             <div className="min-w-0">
                               <p className="truncate text-[15px] text-text">
@@ -124,7 +173,7 @@ export function Today(): ReactNode {
                             <span className="tnum shrink-0 pl-3 text-[15px] font-medium text-text">
                               {Math.round(item.kcal)} kcal
                             </span>
-                          </div>
+                          </button>
                         )),
                       )}
                     </div>
@@ -139,6 +188,11 @@ export function Today(): ReactNode {
         open={logOpen}
         onClose={() => setLogOpen(false)}
         defaultMeal={defaultMealType()}
+      />
+      <DiaryItemSheet
+        key={editTarget ? `${editTarget.entryId}-${editTarget.itemIndex}` : 'none'}
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
       />
     </div>
   );

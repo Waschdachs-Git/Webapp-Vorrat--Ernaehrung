@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Search, Package, Apple, Pencil, ScanLine } from 'lucide-react';
 import { db } from '@/db/database';
 import { BottomSheet } from './BottomSheet';
-import { BarcodeScanner } from './BarcodeScanner';
+import { LazyBarcodeScanner } from './LazyBarcodeScanner';
 import {
   Button,
   Field,
@@ -24,7 +24,12 @@ interface Picked {
   per100: Nutriments;
   sourceType: 'inventory' | 'custom' | 'barcode';
   refId?: number;
+  /** Known weight of one piece (unit 'pcs' only). */
+  gramsPerPiece?: number;
 }
+
+/** Fallback weight per piece when the item has none stored yet. */
+const DEFAULT_GRAMS_PER_PIECE = 100;
 
 const MEAL_OPTIONS: { value: MealType; label: string }[] = [
   { value: 'breakfast', label: 'Frühstück' },
@@ -136,6 +141,7 @@ export function LogFoodSheet({
                           per100: i.nutrimentsPer100!,
                           sourceType: 'inventory',
                           refId: i.id,
+                          gramsPerPiece: i.gramsPerPiece,
                         })
                       }
                     />
@@ -235,22 +241,36 @@ function PortionStep({
   onBack: () => void;
   onDone: () => void;
 }): ReactNode {
-  const presets = picked.unit === 'pcs' ? [1, 2, 3] : [50, 100, 150, 200];
-  const [amount, setAmount] = useState<number>(picked.unit === 'pcs' ? 1 : 100);
+  const isPcs = picked.unit === 'pcs';
+  const presets = isPcs ? [1, 2, 3] : [50, 100, 150, 200];
+  const [amount, setAmount] = useState<number>(isPcs ? 1 : 100);
+  const [gramsPerPiece, setGramsPerPiece] = useState<number>(
+    picked.gramsPerPiece ?? DEFAULT_GRAMS_PER_PIECE,
+  );
   const [saving, setSaving] = useState(false);
-  const scaled = scaleNutriments(picked.per100, amount);
+
+  // Nutriments are per 100 g, so pieces have to be converted to grams first.
+  const nutritionGrams = isPcs ? amount * gramsPerPiece : amount;
+  const scaled = scaleNutriments(picked.per100, nutritionGrams);
 
   const save = async () => {
     setSaving(true);
+    // Remember the weight per piece on the item so it is pre-filled next time.
+    if (isPcs && picked.sourceType === 'inventory' && picked.refId !== undefined) {
+      if (gramsPerPiece !== picked.gramsPerPiece) {
+        await db.inventory.update(picked.refId, { gramsPerPiece });
+      }
+    }
     await logFood({
       mealType: meal,
       item: diaryItemFromPer100({
         name: picked.name,
-        amount,
+        amount, // in the item's own unit -> what gets subtracted from stock
         unit: picked.unit,
         per100: picked.per100,
         sourceType: picked.sourceType,
         refId: picked.refId,
+        nutritionAmount: nutritionGrams,
       }),
     });
     onDone();
@@ -287,6 +307,20 @@ function PortionStep({
         ))}
       </div>
 
+      {isPcs && (
+        <Field
+          label="Gewicht pro Stück (g)"
+          hint="Nährwerte gelten pro 100 g – daher wird das Stückgewicht gebraucht."
+        >
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={gramsPerPiece || ''}
+            onChange={(e) => setGramsPerPiece(parseFloat(e.target.value) || 0)}
+          />
+        </Field>
+      )}
+
       <div className="grid grid-cols-4 gap-2 rounded-2xl bg-surface-2 p-3 text-center">
         <Stat label="kcal" value={Math.round(scaled.kcal)} />
         <Stat label="Protein" value={`${scaled.protein} g`} />
@@ -296,7 +330,8 @@ function PortionStep({
 
       {picked.sourceType === 'inventory' && (
         <p className="text-[12px] text-faint">
-          Wird gebucht und vom Vorrat abgezogen.
+          Wird gebucht und vom Vorrat abgezogen
+          {isPcs ? ` (entspricht ${Math.round(nutritionGrams)} g).` : '.'}
         </p>
       )}
 
@@ -304,7 +339,11 @@ function PortionStep({
         <Button variant="secondary" onClick={onBack}>
           Zurück
         </Button>
-        <Button block onClick={save} disabled={saving || amount <= 0}>
+        <Button
+          block
+          onClick={save}
+          disabled={saving || amount <= 0 || (isPcs && gramsPerPiece <= 0)}
+        >
           Loggen
         </Button>
       </div>
@@ -398,7 +437,7 @@ function ScanPick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
       </div>
     );
   }
-  return <BarcodeScanner onResult={handle} onManual={() => setStatus('notfound')} />;
+  return <LazyBarcodeScanner onResult={handle} onManual={() => setStatus('notfound')} />;
 }
 
 function match(name: string, query: string): boolean {

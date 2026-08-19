@@ -36,6 +36,9 @@ export function Settings(): ReactNode {
   const [keyInput, setKeyInput] = useState(settings.spoonacularApiKey ?? '');
   const [keySaved, setKeySaved] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  // Importing replaces everything, so it goes through an explicit confirmation.
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const saveKey = async () => {
     await updateSettings({ spoonacularApiKey: keyInput.trim() || undefined });
@@ -43,15 +46,20 @@ export function Settings(): ReactNode {
     window.setTimeout(() => setKeySaved(false), 1500);
   };
 
-  const handleImport = async (file: File) => {
+  const runImport = async () => {
+    if (!pendingImport) return;
+    setImporting(true);
     try {
-      const text = await file.text();
+      const text = await pendingImport.text();
       await importData(text);
       setImportMsg('Daten erfolgreich importiert.');
     } catch (err) {
       setImportMsg(
         err instanceof Error ? err.message : 'Import fehlgeschlagen.',
       );
+    } finally {
+      setImporting(false);
+      setPendingImport(null);
     }
   };
 
@@ -161,10 +169,52 @@ export function Settings(): ReactNode {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleImport(file);
+              if (file) {
+                setImportMsg(null);
+                setPendingImport(file);
+              }
               e.target.value = '';
             }}
           />
+
+          {pendingImport && (
+            <div className="mt-3 rounded-xl border border-danger/30 bg-danger/5 p-3">
+              <p className="text-[14px] font-medium text-text">
+                Import überschreibt alle Daten
+              </p>
+              <p className="mt-1 text-[13px] text-muted">
+                „{pendingImport.name}“ ersetzt Vorrat, Tagebuch, Rezepte,
+                Einkaufsliste und Profil vollständig. Das lässt sich nicht
+                rückgängig machen – am besten vorher exportieren.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  variant="secondary"
+                  block
+                  onClick={() => exportData()}
+                  disabled={importing}
+                >
+                  <Download size={16} /> Erst sichern
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setPendingImport(null)}
+                  disabled={importing}
+                >
+                  Abbrechen
+                </Button>
+              </div>
+              <Button
+                block
+                className="mt-2 bg-danger"
+                onClick={runImport}
+                disabled={importing}
+              >
+                {importing ? 'Importiere…' : 'Jetzt ersetzen'}
+              </Button>
+            </div>
+          )}
+
           {importMsg && (
             <p className="mt-3 text-[13px] text-muted">{importMsg}</p>
           )}

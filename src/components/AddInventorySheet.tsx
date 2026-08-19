@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { db } from '@/db/database';
 import { BottomSheet } from './BottomSheet';
-import { BarcodeScanner } from './BarcodeScanner';
+import { LazyBarcodeScanner } from './LazyBarcodeScanner';
 import { Button, Field, Input, Select, SegmentedControl } from './ui';
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
@@ -28,6 +28,7 @@ interface Draft {
   location: StorageLocation;
   amount: string;
   unit: Unit;
+  gramsPerPiece: string;
   bestBefore: string;
   isStaple: boolean;
   minStock: string;
@@ -40,6 +41,7 @@ const EMPTY_DRAFT: Draft = {
   location: 'fridge',
   amount: '',
   unit: 'g',
+  gramsPerPiece: '',
   bestBefore: '',
   isStaple: false,
   minStock: '',
@@ -119,6 +121,10 @@ export function AddInventorySheet({
       location: draft.location,
       amount: parseFloat(draft.amount) || 0,
       unit: draft.unit,
+      gramsPerPiece:
+        draft.unit === 'pcs' && draft.gramsPerPiece
+          ? parseFloat(draft.gramsPerPiece)
+          : undefined,
       nutrimentsPer100: nutriments,
       bestBefore: draft.bestBefore || undefined,
       isStaple: draft.isStaple,
@@ -143,7 +149,7 @@ export function AddInventorySheet({
       title={editItem ? 'Artikel bearbeiten' : step === 'scan' ? 'Barcode scannen' : 'Artikel hinzufügen'}
     >
       {step === 'scan' && !editItem ? (
-        <BarcodeScanner onResult={handleScan} onManual={() => setStep('form')} />
+        <LazyBarcodeScanner onResult={handleScan} onManual={() => setStep('form')} />
       ) : (
         <div className="flex flex-col gap-3">
           {scanInfo && (
@@ -193,6 +199,23 @@ export function AddInventorySheet({
               </Select>
             </Field>
           </div>
+
+          {draft.unit === 'pcs' && (
+            <Field
+              label="Gewicht pro Stück (g)"
+              hint="Für die Nährwert-Berechnung beim Loggen. Kann später ergänzt werden."
+            >
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={draft.gramsPerPiece}
+                onChange={(e) =>
+                  setDraft({ ...draft, gramsPerPiece: e.target.value })
+                }
+                placeholder="z. B. 55 für ein Ei"
+              />
+            </Field>
+          )}
 
           <Field label="Mindesthaltbarkeit (optional)">
             <Input
@@ -274,6 +297,8 @@ function draftFromItem(item: InventoryItem): Draft {
     location: item.location,
     amount: String(item.amount),
     unit: item.unit,
+    gramsPerPiece:
+      item.gramsPerPiece !== undefined ? String(item.gramsPerPiece) : '',
     bestBefore: item.bestBefore ?? '',
     isStaple: item.isStaple,
     minStock: item.minStock !== undefined ? String(item.minStock) : '',
