@@ -10,6 +10,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PROFILE_ID, ensureSeeded } from '@/db/database';
 import { useTheme } from '@/hooks/useTheme';
 import { TabBar } from '@/components/TabBar';
+import { UndoToastProvider } from '@/components/UndoToast';
 import { Today } from '@/pages/Today';
 import { Inventory } from '@/pages/Inventory';
 import { Shopping } from '@/pages/Shopping';
@@ -51,31 +52,33 @@ function AppShell(): ReactNode {
   const location = useLocation();
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-3xl flex-col">
-      <main className="flex-1 overflow-y-auto pt-safe">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-          >
-            <Routes location={location}>
-              <Route path="/" element={<Navigate to="/heute" replace />} />
-              <Route path="/heute" element={<Today />} />
-              <Route path="/vorrat" element={<Inventory />} />
-              <Route path="/einkauf" element={<Shopping />} />
-              <Route path="/rezepte" element={<Recipes />} />
-              <Route path="/profil" element={<Profile />} />
-              <Route path="/einstellungen" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/heute" replace />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
-      </main>
-      <TabBar />
-    </div>
+    <UndoToastProvider>
+      <div className="mx-auto flex h-[100dvh] max-w-3xl flex-col">
+        <main className="flex-1 overflow-y-auto pt-safe">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+            >
+              <Routes location={location}>
+                <Route path="/" element={<Navigate to="/heute" replace />} />
+                <Route path="/heute" element={<Today />} />
+                <Route path="/vorrat" element={<Inventory />} />
+                <Route path="/einkauf" element={<Shopping />} />
+                <Route path="/rezepte" element={<Recipes />} />
+                <Route path="/profil" element={<Profile />} />
+                <Route path="/einstellungen" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/heute" replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <TabBar />
+      </div>
+    </UndoToastProvider>
   );
 }
 

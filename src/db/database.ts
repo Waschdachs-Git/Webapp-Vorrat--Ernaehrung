@@ -39,6 +39,15 @@ export class AppDatabase extends Dexie {
       foodsLocal: '++id, name',
       settings: 'id',
     });
+
+    // v2: IndexedDB cannot index boolean values, so the `isStaple` and
+    // `checked` indexes never held any records — they were dead weight and
+    // made `where('checked')` look usable when it always returns nothing.
+    // `addedAt` replaces them where an index is actually useful.
+    this.version(2).stores({
+      inventory: '++id, name, location, bestBefore, barcode, addedAt',
+      shoppingList: '++id, name, source, addedAt',
+    });
   }
 }
 

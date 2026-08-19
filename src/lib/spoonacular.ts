@@ -1,4 +1,4 @@
-import type { Nutriments } from '@/db/types';
+import type { Nutriments, RecipeIngredient, Unit } from '@/db/types';
 
 /**
  * Minimal Spoonacular client. The free-tier API key comes from Settings and is
@@ -26,7 +26,10 @@ export interface RecipeDetail {
   readyInMinutes?: number;
   sourceUrl?: string;
   instructions?: string;
+  /** Human-readable lines as returned by the API ("2 tbsp olive oil"). */
   ingredients: string[];
+  /** Structured metric amounts, usable for stock matching. */
+  structuredIngredients: RecipeIngredient[];
   nutritionPerServing?: Nutriments;
 }
 
@@ -165,7 +168,16 @@ interface SpoonInformation {
   readyInMinutes?: number;
   sourceUrl?: string;
   instructions?: string;
-  extendedIngredients?: { original: string }[];
+  extendedIngredients?: {
+    original: string;
+    name?: string;
+    nameClean?: string;
+    amount?: number;
+    unit?: string;
+    measures?: {
+      metric?: { amount?: number; unitShort?: string };
+    };
+  }[];
   nutrition?: {
     nutrients?: { name: string; amount: number }[];
   };
@@ -186,6 +198,9 @@ function parseInformation(d: SpoonInformation): RecipeDetail {
     sourceUrl: d.sourceUrl,
     instructions: d.instructions,
     ingredients: (d.extendedIngredients ?? []).map((i) => i.original),
+    structuredIngredients: (d.extendedIngredients ?? [])
+      .map(toIngredient)
+      .filter((i): i is RecipeIngredient => i !== null),
     nutritionPerServing: hasNutrition
       ? {
           kcal: kcal ?? 0,
@@ -196,3 +211,63 @@ function parseInformation(d: SpoonInformation): RecipeDetail {
       : undefined,
   };
 }
+
+/**
+ * Convert one Spoonacular ingredient into our {name, amount, unit} shape.
+ * Spoonacular ships a metric measure alongside the imperial one; we prefer it
+ * and translate the common unit abbreviations. Anything not expressible in
+ * g/ml (cloves, slices, "1 onion") is kept as a piece count so the ingredient
+ * can still be matched against stock.
+ */
+function toIngredient(raw: {
+  original: string;
+  name?: string;
+  nameClean?: string;
+  amount?: number;
+  unit?: string;
+  measures?: { metric?: { amount?: number; unitShort?: string } };
+}): RecipeIngredient | null {
+  const name = (raw.nameClean || raw.name || '').trim();
+  if (!name) return null;
+
+  const metric = raw.measures?.metric;
+  const amount = metric?.amount ?? raw.amount ?? 0;
+  const rawUnit = (metric?.unitShort ?? raw.unit ?? '').trim().toLowerCase();
+
+  const conv = UNIT_CONVERSIONS[rawUnit];
+  if (conv) {
+    return {
+      name,
+      amount: Math.round(amount * conv.factor * 10) / 10,
+      unit: conv.unit,
+    };
+  }
+
+  // Not expressible in g/ml (cloves, slices, "1 onion") -> keep as pieces.
+  return { name, amount: amount || 1, unit: 'pcs' };
+}
+
+/** Unit abbreviation -> our unit plus the factor to reach g / ml. */
+const UNIT_CONVERSIONS: Record<string, { unit: Unit; factor: number }> = {
+  g: { unit: 'g', factor: 1 },
+  gr: { unit: 'g', factor: 1 },
+  gram: { unit: 'g', factor: 1 },
+  grams: { unit: 'g', factor: 1 },
+  kg: { unit: 'g', factor: 1000 },
+  oz: { unit: 'g', factor: 28.35 },
+  lb: { unit: 'g', factor: 453.6 },
+  ml: { unit: 'ml', factor: 1 },
+  milliliter: { unit: 'ml', factor: 1 },
+  milliliters: { unit: 'ml', factor: 1 },
+  l: { unit: 'ml', factor: 1000 },
+  tbsp: { unit: 'ml', factor: 15 },
+  tbsps: { unit: 'ml', factor: 15 },
+  tablespoon: { unit: 'ml', factor: 15 },
+  tablespoons: { unit: 'ml', factor: 15 },
+  tsp: { unit: 'ml', factor: 5 },
+  tsps: { unit: 'ml', factor: 5 },
+  teaspoon: { unit: 'ml', factor: 5 },
+  teaspoons: { unit: 'ml', factor: 5 },
+  cup: { unit: 'ml', factor: 240 },
+  cups: { unit: 'ml', factor: 240 },
+};

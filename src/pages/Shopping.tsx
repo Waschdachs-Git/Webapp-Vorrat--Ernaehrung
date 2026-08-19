@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
 import { SwipeRow } from '@/components/SwipeRow';
 import { Button, Badge, EmptyState, Input, cx } from '@/components/ui';
+import { useUndo } from '@/components/UndoToast';
 import { nowISO } from '@/lib/date';
 import type { ShoppingItem } from '@/db/types';
 
@@ -36,7 +37,26 @@ export function Shopping(): ReactNode {
     item.id !== undefined &&
     db.shoppingList.update(item.id, { checked: !item.checked });
 
-  const clearDone = () => db.shoppingList.filter((i) => i.checked).delete();
+  const showUndo = useUndo();
+
+  const removeItem = async (item: ShoppingItem) => {
+    if (item.id === undefined) return;
+    await db.shoppingList.delete(item.id);
+    showUndo(`„${item.name}“ gelöscht`, async () => {
+      await db.shoppingList.add(item);
+    });
+  };
+
+  const clearDone = async () => {
+    const cleared = (items ?? []).filter((i) => i.checked);
+    if (cleared.length === 0) return;
+    await db.shoppingList.bulkDelete(
+      cleared.map((i) => i.id!).filter((id) => id !== undefined),
+    );
+    showUndo(`${cleared.length} Einträge entfernt`, async () => {
+      await db.shoppingList.bulkAdd(cleared);
+    });
+  };
 
   return (
     <div className="pb-24">
@@ -68,9 +88,7 @@ export function Shopping(): ReactNode {
                 key={item.id}
                 onSwipeRight={() => toggle(item)}
                 rightLabel="Erledigt"
-                onSwipeLeft={() =>
-                  item.id !== undefined && db.shoppingList.delete(item.id)
-                }
+                onSwipeLeft={() => removeItem(item)}
               >
                 <ShoppingRow
                   item={item}
@@ -97,9 +115,7 @@ export function Shopping(): ReactNode {
                   {done.map((item) => (
                     <SwipeRow
                       key={item.id}
-                      onSwipeLeft={() =>
-                        item.id !== undefined && db.shoppingList.delete(item.id)
-                      }
+                      onSwipeLeft={() => removeItem(item)}
                     >
                       <ShoppingRow
                         item={item}

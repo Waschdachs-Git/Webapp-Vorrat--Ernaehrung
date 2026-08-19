@@ -501,7 +501,9 @@ function SpoonacularDetailSheet({
     const recipe: Omit<OwnRecipe, 'id'> = {
       title: detail.title,
       servings: detail.servings || 1,
-      ingredients: [],
+      // Structured metric amounts, so "Gekocht" can deduct from stock and the
+      // recipe shows up under "Was kann ich kochen?".
+      ingredients: detail.structuredIngredients,
       steps: detail.instructions
         ? detail.instructions.replace(/<[^>]+>/g, '').split(/\.\s+/).filter(Boolean)
         : [],
@@ -539,7 +541,12 @@ function SpoonacularDetailSheet({
 
           {detail.ingredients.length > 0 && (
             <div>
-              <h3 className="mb-1.5 text-[14px] font-semibold text-text">Zutaten</h3>
+              <h3 className="mb-1.5 text-[14px] font-semibold text-text">
+                Zutaten{' '}
+                <span className="font-normal text-faint">
+                  ({detail.structuredIngredients.length} übernehmbar)
+                </span>
+              </h3>
               <ul className="flex flex-col gap-1">
                 {detail.ingredients.map((ing, i) => (
                   <li key={i} className="text-[14px] text-muted">
