@@ -252,6 +252,8 @@ export function Profile(): ReactNode {
       </BottomSheet>
 
       <TargetsSheet
+        // Remount when the targets change so the inputs show current values.
+        key={`${targets.kcal}-${targets.protein}-${targets.carbs}-${targets.fat}`}
         open={targetsOpen}
         onClose={() => setTargetsOpen(false)}
         calculated={calculated}

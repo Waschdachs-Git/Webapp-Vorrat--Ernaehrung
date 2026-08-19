@@ -115,6 +115,8 @@ export function Inventory(): ReactNode {
       </div>
 
       <AddInventorySheet
+        // Remount per target so the form initialises from the item being edited.
+        key={editItem?.id ?? 'new'}
         open={addOpen}
         onClose={() => setAddOpen(false)}
         editItem={editItem}

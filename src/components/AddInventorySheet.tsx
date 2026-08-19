@@ -49,16 +49,25 @@ const EMPTY_DRAFT: Draft = {
 export function AddInventorySheet({
   open,
   onClose,
+  onSaved,
   editItem,
+  prefillName,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Called only after the item was actually written to the inventory. */
+  onSaved?: () => void;
   editItem?: InventoryItem;
+  prefillName?: string;
 }): ReactNode {
-  const [step, setStep] = useState<Step>(editItem ? 'form' : 'scan');
+  const [step, setStep] = useState<Step>(
+    editItem || prefillName ? 'form' : 'scan',
+  );
   const [scanInfo, setScanInfo] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() =>
-    editItem ? draftFromItem(editItem) : EMPTY_DRAFT,
+    editItem
+      ? draftFromItem(editItem)
+      : { ...EMPTY_DRAFT, name: prefillName ?? '' },
   );
   const [saving, setSaving] = useState(false);
 
@@ -123,6 +132,7 @@ export function AddInventorySheet({
     }
     await runAutoRestock();
     setSaving(false);
+    onSaved?.();
     close();
   };
 

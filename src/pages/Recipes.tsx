@@ -109,11 +109,17 @@ export function Recipes(): ReactNode {
       </div>
 
       <RecipeEditorSheet
+        // Remount per target so the form initialises from the recipe being edited.
+        key={editRecipe?.id ?? 'new'}
         open={editorOpen}
         onClose={() => setEditorOpen(false)}
         editRecipe={editRecipe}
       />
-      <CookRecipeSheet recipe={cookRecipe} onClose={() => setCookRecipe(null)} />
+      <CookRecipeSheet
+        key={cookRecipe?.id ?? 'none'}
+        recipe={cookRecipe}
+        onClose={() => setCookRecipe(null)}
+      />
     </div>
   );
 }

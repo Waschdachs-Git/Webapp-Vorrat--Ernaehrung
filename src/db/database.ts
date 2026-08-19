@@ -46,8 +46,13 @@ export const db = new AppDatabase();
 
 let seedPromise: Promise<void> | null = null;
 
-/** Ensure default settings and seed foods exist. Idempotent + de-duped. */
-export function ensureSeeded(): Promise<void> {
+/**
+ * Ensure default settings and seed foods exist. Idempotent + de-duped.
+ * Pass `force` after replacing the database (import) so the memoised promise
+ * does not swallow the re-seed.
+ */
+export function ensureSeeded(force = false): Promise<void> {
+  if (force) seedPromise = null;
   if (!seedPromise) {
     seedPromise = (async () => {
       const existingSettings = await db.settings.get(SETTINGS_ID);

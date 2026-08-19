@@ -32,6 +32,14 @@ export function daysUntil(isoDate: string): number {
   return Math.round((target.getTime() - now.getTime()) / 86_400_000);
 }
 
+/** UTC ISO bounds of a local calendar day — for indexed range queries. */
+export function localDayBounds(isoDate: string): { start: string; end: string } {
+  return {
+    start: new Date(`${isoDate}T00:00:00`).toISOString(),
+    end: new Date(`${isoDate}T23:59:59.999`).toISOString(),
+  };
+}
+
 export function isSameLocalDay(isoDatetime: string, isoDate: string): boolean {
   return toISODate(new Date(isoDatetime)) === isoDate;
 }
