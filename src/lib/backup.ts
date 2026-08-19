@@ -91,7 +91,7 @@ export async function importData(text: string): Promise<void> {
     },
   );
 
-  await ensureSeeded();
+  await ensureSeeded(true);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

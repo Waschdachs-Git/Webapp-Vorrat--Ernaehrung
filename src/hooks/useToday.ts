@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PROFILE_ID } from '@/db/database';
-import { todayISO, isSameLocalDay } from '@/lib/date';
+import { todayISO, localDayBounds } from '@/lib/date';
 import { sumDiary, EMPTY_NUTRIMENTS } from '@/lib/nutrition';
 import { effectiveTargets } from '@/lib/health';
 import type { DiaryEntry, Nutriments, Profile, Targets } from '@/db/types';
@@ -21,9 +21,10 @@ export function useToday(): TodayData {
   const profile = useLiveQuery(() => db.profile.get(PROFILE_ID), []);
   const today = todayISO();
 
+  // Range query over the `datetime` index instead of scanning the whole table.
   const entries = useLiveQuery(async () => {
-    const all = await db.diary.toArray();
-    return all.filter((e) => isSameLocalDay(e.datetime, today));
+    const { start, end } = localDayBounds(today);
+    return db.diary.where('datetime').between(start, end, true, true).toArray();
   }, [today]);
 
   const loading = profile === undefined || entries === undefined;

@@ -57,10 +57,15 @@ export function CookRecipeSheet({
             onChange={(e) => setServings(e.target.value)}
           />
         </Field>
-        {recipe?.nutritionPerServing && (
+        {recipe?.nutritionPerServing ? (
           <p className="text-[13px] text-muted">
             {Math.round(recipe.nutritionPerServing.kcal * (parseFloat(servings) || 1))}{' '}
             kcal werden ins Tagebuch gebucht.
+          </p>
+        ) : (
+          <p className="rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
+            Für dieses Rezept sind keine Nährwerte hinterlegt – es würde mit
+            0 kcal gebucht. Ergänze sie über „Bearbeiten“.
           </p>
         )}
         <Button block onClick={cook} disabled={saving}>

@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Pencil,
@@ -6,19 +6,11 @@ import {
   Plus,
   TrendingUp,
 } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { db, PROFILE_ID } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { BottomSheet } from '@/components/BottomSheet';
+
 import {
   ProfileForm,
   draftFromProfile,
@@ -35,6 +27,11 @@ import {
 } from '@/lib/health';
 import { ageFromBirthdate, formatDay, todayISO } from '@/lib/date';
 import type { Targets } from '@/db/types';
+
+// Recharts is only needed once there are at least two weight entries.
+const WeightChart = lazy(() =>
+  import('@/components/WeightChart').then((m) => ({ default: m.WeightChart })),
+);
 
 export function Profile(): ReactNode {
   const profile = useLiveQuery(() => db.profile.get(PROFILE_ID), []);
@@ -174,42 +171,11 @@ export function Profile(): ReactNode {
           </div>
 
           {chartData.length >= 2 ? (
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--c-border))" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 11, fill: 'rgb(var(--c-faint))' }}
-                    stroke="rgb(var(--c-border))"
-                  />
-                  <YAxis
-                    domain={['dataMin - 1', 'dataMax + 1']}
-                    tick={{ fontSize: 11, fill: 'rgb(var(--c-faint))' }}
-                    stroke="rgb(var(--c-border))"
-                    width={36}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'rgb(var(--c-surface))',
-                      border: '1px solid rgb(var(--c-border))',
-                      borderRadius: 12,
-                      fontSize: 12,
-                      color: 'rgb(var(--c-text))',
-                    }}
-                    formatter={(v: number) => [`${v} kg`, 'Gewicht']}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="kg"
-                    stroke="rgb(var(--c-accent))"
-                    strokeWidth={2.5}
-                    dot={{ r: 3, fill: 'rgb(var(--c-accent))' }}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <Suspense
+              fallback={<div className="h-44 w-full animate-pulse rounded-xl bg-surface-2" />}
+            >
+              <WeightChart data={chartData} />
+            </Suspense>
           ) : (
             <p className="py-4 text-center text-[13px] text-faint">
               Trage mind. zwei Werte ein, um den Verlauf zu sehen.
@@ -252,6 +218,8 @@ export function Profile(): ReactNode {
       </BottomSheet>
 
       <TargetsSheet
+        // Remount when the targets change so the inputs show current values.
+        key={`${targets.kcal}-${targets.protein}-${targets.carbs}-${targets.fat}`}
         open={targetsOpen}
         onClose={() => setTargetsOpen(false)}
         calculated={calculated}

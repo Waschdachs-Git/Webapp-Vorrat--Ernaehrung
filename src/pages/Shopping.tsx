@@ -117,14 +117,17 @@ export function Shopping(): ReactNode {
 
       {/* "In den Vorrat übernehmen" -> scan/manual flow with the name prefilled. */}
       <AddInventorySheet
+        key={restockItem?.id ?? 'none'}
         open={!!restockItem}
-        onClose={async () => {
-          // Once taken into stock, remove it from the shopping list.
+        prefillName={restockItem?.name}
+        // Remove from the shopping list only after it really landed in stock;
+        // cancelling must not discard the entry.
+        onSaved={() => {
           if (restockItem?.id !== undefined) {
-            await db.shoppingList.delete(restockItem.id);
+            void db.shoppingList.delete(restockItem.id);
           }
-          setRestockItem(null);
         }}
+        onClose={() => setRestockItem(null)}
       />
     </div>
   );

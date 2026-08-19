@@ -62,6 +62,11 @@ export interface InventoryItem {
   location: StorageLocation;
   amount: number;
   unit: Unit;
+  /**
+   * Weight of one piece in grams — only meaningful for unit 'pcs'. Nutriments
+   * are stored per 100 g, so logging by the piece needs this to convert.
+   */
+  gramsPerPiece?: number;
   nutrimentsPer100?: Nutriments; // per 100 g/ml, from Open Food Facts or manual
   bestBefore?: string; // ISO date (MHD)
   isStaple: boolean;

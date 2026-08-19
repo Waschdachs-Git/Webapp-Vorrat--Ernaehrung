@@ -1,6 +1,11 @@
 import { db } from '@/db/database';
 import { nowISO, todayISO } from './date';
-import { addNutriments, EMPTY_NUTRIMENTS, scaleNutriments } from './nutrition';
+import {
+  addNutriments,
+  EMPTY_NUTRIMENTS,
+  round1,
+  scaleNutriments,
+} from './nutrition';
 import type {
   DiaryEntry,
   DiaryItem,
@@ -109,7 +114,14 @@ export async function subtractInventory(id: number, amount: number): Promise<voi
   await db.inventory.update(id, { amount: next });
 }
 
-/** Build a scaled diary item from per-100g nutriments. */
+/**
+ * Build a scaled diary item from per-100 g nutriments.
+ *
+ * `amount` is the logged quantity in the item's own unit (and what gets
+ * subtracted from stock). `nutritionAmount` is the quantity in grams/ml used
+ * for the nutrition maths — they differ for items measured in pieces, where
+ * grams = pieces x gramsPerPiece.
+ */
 export function diaryItemFromPer100(args: {
   name: string;
   amount: number;
@@ -117,8 +129,9 @@ export function diaryItemFromPer100(args: {
   per100: Nutriments;
   sourceType: DiaryItem['sourceType'];
   refId?: number;
+  nutritionAmount?: number;
 }): DiaryItem {
-  const n = scaleNutriments(args.per100, args.amount);
+  const n = scaleNutriments(args.per100, args.nutritionAmount ?? args.amount);
   return {
     name: args.name,
     amount: args.amount,
@@ -166,6 +179,95 @@ export async function runAutoRestock(): Promise<void> {
       await db.shoppingList.delete(existing.id);
     }
   }
+}
+
+/** Give an amount back to stock (used when a diary entry is reduced/removed). */
+export async function restoreInventory(id: number, amount: number): Promise<void> {
+  const item = await db.inventory.get(id);
+  if (!item) return;
+  const next = Math.max(0, Math.round((item.amount + amount) * 10) / 10);
+  await db.inventory.update(id, { amount: next });
+}
+
+/** Recalculate an entry's totals from its items. */
+function recalcTotals(items: DiaryItem[]): Nutriments {
+  return items.reduce<Nutriments>(
+    (acc, i) =>
+      addNutriments(acc, {
+        kcal: i.kcal,
+        protein: i.protein,
+        carbs: i.carbs,
+        fat: i.fat,
+      }),
+    { ...EMPTY_NUTRIMENTS },
+  );
+}
+
+/**
+ * Remove one item from a diary entry. Anything that came from stock is
+ * credited back. The entry itself is deleted once its last item is gone.
+ */
+export async function deleteDiaryItem(
+  entryId: number,
+  itemIndex: number,
+): Promise<void> {
+  const entry = await db.diary.get(entryId);
+  const item = entry?.items[itemIndex];
+  if (!entry || !item) return;
+
+  if (item.sourceType === 'inventory' && item.refId !== undefined) {
+    await restoreInventory(item.refId, item.amount);
+  }
+
+  const items = entry.items.filter((_, i) => i !== itemIndex);
+  if (items.length === 0) {
+    await db.diary.delete(entryId);
+  } else {
+    await db.diary.update(entryId, { items, totals: recalcTotals(items) });
+  }
+  await runAutoRestock();
+}
+
+/**
+ * Change the logged amount of one diary item. Nutriments scale proportionally
+ * and the difference is applied to stock.
+ */
+export async function updateDiaryItemAmount(
+  entryId: number,
+  itemIndex: number,
+  newAmount: number,
+): Promise<void> {
+  const entry = await db.diary.get(entryId);
+  const item = entry?.items[itemIndex];
+  if (!entry || !item || newAmount <= 0 || item.amount <= 0) return;
+
+  const factor = newAmount / item.amount;
+  const updated: DiaryItem = {
+    ...item,
+    amount: newAmount,
+    kcal: round1(item.kcal * factor),
+    protein: round1(item.protein * factor),
+    carbs: round1(item.carbs * factor),
+    fat: round1(item.fat * factor),
+  };
+
+  if (item.sourceType === 'inventory' && item.refId !== undefined) {
+    const delta = newAmount - item.amount;
+    if (delta > 0) await subtractInventory(item.refId, delta);
+    else if (delta < 0) await restoreInventory(item.refId, -delta);
+  }
+
+  const items = entry.items.map((it, i) => (i === itemIndex ? updated : it));
+  await db.diary.update(entryId, { items, totals: recalcTotals(items) });
+  await runAutoRestock();
+}
+
+/** Log a previously eaten item again, unchanged (quick log). */
+export async function repeatDiaryItem(
+  item: DiaryItem,
+  mealType: MealType,
+): Promise<void> {
+  await logFood({ mealType, item: { ...item } });
 }
 
 function namesMatch(a: string, b: string): boolean {
