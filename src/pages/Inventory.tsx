@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
 import { SwipeRow } from '@/components/SwipeRow';
 import { Button, Badge, EmptyState, Input, cx } from '@/components/ui';
+import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
 import { daysUntil, formatDay } from '@/lib/date';
 import type { InventoryItem, StorageLocation } from '@/db/types';
@@ -21,6 +22,16 @@ export function Inventory(): ReactNode {
   const [query, setQuery] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | undefined>();
+  const showUndo = useUndo();
+
+  // Re-adding with the original id keeps diary references intact.
+  const removeItem = async (item: InventoryItem) => {
+    if (item.id === undefined) return;
+    await db.inventory.delete(item.id);
+    showUndo(`„${item.name}“ gelöscht`, async () => {
+      await db.inventory.add(item);
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,9 +110,7 @@ export function Inventory(): ReactNode {
                     {grouped[key].map((item) => (
                       <SwipeRow
                         key={item.id}
-                        onSwipeLeft={() =>
-                          item.id !== undefined && db.inventory.delete(item.id)
-                        }
+                        onSwipeLeft={() => removeItem(item)}
                       >
                         <InventoryRow item={item} onClick={() => openEdit(item)} />
                       </SwipeRow>
