@@ -111,7 +111,7 @@ export function LogFoodSheet({
         </div>
 
         {source === 'scan' ? (
-          <ScanPick onPicked={setPicked} />
+          <ScanPick onPicked={setPicked} onManual={() => setSource('free')} />
         ) : source === 'free' ? (
           <FreePick onPicked={setPicked} />
         ) : (
@@ -407,7 +407,13 @@ function FreePick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
   );
 }
 
-function ScanPick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
+function ScanPick({
+  onPicked,
+  onManual,
+}: {
+  onPicked: (p: Picked) => void;
+  onManual: () => void;
+}): ReactNode {
   const [status, setStatus] = useState<'scan' | 'loading' | 'notfound'>('scan');
 
   const handle = async (code: string) => {
@@ -431,14 +437,21 @@ function ScanPick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
   if (status === 'notfound') {
     return (
       <div className="py-6 text-center">
-        <p className="text-[14px] text-muted">Kein Produkt mit Nährwerten gefunden.</p>
-        <Button variant="secondary" className="mt-3" onClick={() => setStatus('scan')}>
-          Erneut scannen
-        </Button>
+        <p className="text-[14px] text-muted">
+          Kein Produkt mit Nährwerten gefunden.
+        </p>
+        <div className="mt-3 flex justify-center gap-2">
+          <Button variant="secondary" onClick={() => setStatus('scan')}>
+            Nochmal versuchen
+          </Button>
+          <Button variant="secondary" onClick={onManual}>
+            Frei eingeben
+          </Button>
+        </div>
       </div>
     );
   }
-  return <LazyBarcodeScanner onResult={handle} onManual={() => setStatus('notfound')} />;
+  return <LazyBarcodeScanner onResult={handle} onManual={onManual} />;
 }
 
 function match(name: string, query: string): boolean {
