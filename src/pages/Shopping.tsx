@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, ShoppingCart, Check, RefreshCw } from 'lucide-react';
 import { db } from '@/db/database';
@@ -10,6 +10,12 @@ import { useUndo } from '@/components/UndoToast';
 import { nowISO } from '@/lib/date';
 import type { ShoppingItem } from '@/db/types';
 import { formatAmount } from '@/lib/format';
+import {
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  type FoodCategory,
+} from '@/lib/categories';
+import { classifyWithHints } from '@/db/database';
 
 export function Shopping(): ReactNode {
   const items = useLiveQuery(
@@ -19,14 +25,37 @@ export function Shopping(): ReactNode {
   const [newName, setNewName] = useState('');
   const [restockItem, setRestockItem] = useState<ShoppingItem | null>(null);
 
-  const open = (items ?? []).filter((i) => !i.checked);
-  const done = (items ?? []).filter((i) => i.checked);
+  const open = useMemo(
+    () => (items ?? []).filter((i) => !i.checked),
+    [items],
+  );
+  const done = useMemo(() => (items ?? []).filter((i) => i.checked), [items]);
+
+  // Grouped in supermarket order, so the list matches the walk through
+  // the shop instead of sending you back and forth between aisles.
+  const openByCategory = useMemo(() => {
+    const buckets = new Map<FoodCategory, typeof open>();
+    for (const item of open) {
+      const key = item.category ?? 'other';
+      const list = buckets.get(key);
+      if (list) list.push(item);
+      else buckets.set(key, [item]);
+    }
+    for (const list of buckets.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    }
+    return CATEGORY_ORDER.filter((c) => buckets.get(c)?.length).map((c) => ({
+      category: c,
+      items: buckets.get(c)!,
+    }));
+  }, [open]);
 
   const add = async () => {
     const name = newName.trim();
     if (!name) return;
     await db.shoppingList.add({
       name,
+      category: await classifyWithHints(name),
       checked: false,
       source: 'manual',
       addedAt: nowISO(),
@@ -84,19 +113,29 @@ export function Shopping(): ReactNode {
           />
         ) : (
           <div className="flex flex-col gap-2">
-            {open.map((item) => (
-              <SwipeRow
-                key={item.id}
-                onSwipeRight={() => toggle(item)}
-                rightLabel="Erledigt"
-                onSwipeLeft={() => removeItem(item)}
-              >
-                <ShoppingRow
-                  item={item}
-                  onToggle={() => toggle(item)}
-                  onTakeover={() => setRestockItem(item)}
-                />
-              </SwipeRow>
+            {openByCategory.map((group) => (
+              <section key={group.category} className="mb-1">
+                <h2 className="px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
+                  {CATEGORY_LABELS[group.category]}
+                </h2>
+                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                  {group.items.map((item, idx) => (
+                    <SwipeRow
+                      key={item.id}
+                      className={idx > 0 ? 'border-t border-border' : ''}
+                      onSwipeRight={() => toggle(item)}
+                      rightLabel="Erledigt"
+                      onSwipeLeft={() => removeItem(item)}
+                    >
+                      <ShoppingRow
+                        item={item}
+                        onToggle={() => toggle(item)}
+                        onTakeover={() => setRestockItem(item)}
+                      />
+                    </SwipeRow>
+                  ))}
+                </div>
+              </section>
             ))}
 
             {done.length > 0 && (
@@ -112,10 +151,11 @@ export function Shopping(): ReactNode {
                     Liste leeren
                   </button>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {done.map((item) => (
+                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                  {done.map((item, idx) => (
                     <SwipeRow
                       key={item.id}
+                      className={idx > 0 ? 'border-t border-border' : ''}
                       onSwipeLeft={() => removeItem(item)}
                     >
                       <ShoppingRow
@@ -160,7 +200,7 @@ function ShoppingRow({
   onTakeover: () => void;
 }): ReactNode {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-3">
+    <div className="flex items-center gap-3 bg-surface px-3 py-3">
       <button
         type="button"
         onClick={onToggle}
