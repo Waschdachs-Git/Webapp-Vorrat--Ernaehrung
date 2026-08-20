@@ -9,6 +9,7 @@ import { Button, Badge, EmptyState, Input, cx } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
 import { nowISO } from '@/lib/date';
 import type { ShoppingItem } from '@/db/types';
+import { formatAmount } from '@/lib/format';
 
 export function Shopping(): ReactNode {
   const items = useLiveQuery(
@@ -181,9 +182,10 @@ function ShoppingRow({
           {item.name}
         </p>
         <div className="mt-0.5 flex items-center gap-1.5">
-          {item.amount && (
+          {item.amount !== undefined && (
             <span className="text-[12px] text-faint">
-              {item.amount} {item.unit}
+              {/* Shopping entries may carry an amount without a unit. */}
+              {item.unit ? formatAmount(item.amount, item.unit) : item.amount}
             </span>
           )}
           {item.source === 'auto-restock' && (

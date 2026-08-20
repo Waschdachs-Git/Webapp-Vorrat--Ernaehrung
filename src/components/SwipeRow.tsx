@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { motion, useMotionValue, animate } from 'framer-motion';
 import { Trash2, Check } from 'lucide-react';
+import { cx } from './ui';
 
 /**
  * A list row that reveals an action when swiped horizontally.
@@ -11,18 +12,21 @@ export function SwipeRow({
   onSwipeLeft,
   onSwipeRight,
   rightLabel,
+  className,
 }: {
   children: ReactNode;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
   rightLabel?: string;
+  /** Override the default rounding, e.g. for rows inside a flat list. */
+  className?: string;
 }): ReactNode {
   const x = useMotionValue(0);
   const [removing, setRemoving] = useState(false);
   const threshold = 96;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
+    <div className={cx('relative overflow-hidden', className ?? 'rounded-2xl')}>
       {/* Left action (revealed by swiping right) */}
       {onSwipeRight && (
         <div className="absolute inset-y-0 left-0 flex items-center gap-1.5 bg-accent px-5 text-white">

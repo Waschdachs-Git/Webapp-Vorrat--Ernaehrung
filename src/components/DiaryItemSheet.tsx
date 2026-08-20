@@ -4,6 +4,7 @@ import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input } from './ui';
 import { deleteDiaryItem, updateDiaryItemAmount } from '@/lib/actions';
 import type { DiaryItem } from '@/db/types';
+import { formatAmount, unitLabel } from '@/lib/format';
 
 export interface DiaryItemRef {
   entryId: number;
@@ -57,12 +58,12 @@ export function DiaryItemSheet({
       {target && (
         <div className="flex flex-col gap-4">
           <p className="text-[13px] text-muted">
-            Aktuell gebucht: {target.item.amount} {target.item.unit} ·{' '}
+            Aktuell gebucht: {formatAmount(target.item.amount, target.item.unit)} ·{' '}
             {Math.round(target.item.kcal)} kcal
           </p>
 
           <Field
-            label={`Menge (${target.item.unit})`}
+            label={`Menge (${unitLabel(target.item.unit)})`}
             hint={
               fromStock
                 ? 'Die Differenz wird im Vorrat mit verrechnet.'
