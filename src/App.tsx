@@ -5,9 +5,13 @@ import {
   Routes,
   useLocation,
 } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, PROFILE_ID, ensureSeeded } from '@/db/database';
+import {
+  db,
+  PROFILE_ID,
+  ensureSeeded,
+  backfillCategories,
+} from '@/db/database';
 import { useTheme } from '@/hooks/useTheme';
 import { TabBar } from '@/components/TabBar';
 import { UndoToastProvider } from '@/components/UndoToast';
@@ -32,7 +36,9 @@ export function App(): ReactNode {
   useEffect(() => {
     // Always release the splash, even if seeding fails, so the UI never hangs.
     ensureSeeded()
-      .catch((err) => console.error('Seeding fehlgeschlagen:', err))
+      // Items created before categories existed get one classified here.
+      .then(() => backfillCategories())
+      .catch((err) => console.error('Initialisierung fehlgeschlagen:', err))
       .finally(() => setSeeded(true));
   }, []);
 
@@ -55,26 +61,25 @@ function AppShell(): ReactNode {
     <UndoToastProvider>
       <div className="mx-auto flex h-[100dvh] max-w-3xl flex-col">
         <main className="flex-1 overflow-y-auto pt-safe">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.16, ease: 'easeOut' }}
-            >
-              <Routes location={location}>
-                <Route path="/" element={<Navigate to="/heute" replace />} />
-                <Route path="/heute" element={<Today />} />
-                <Route path="/vorrat" element={<Inventory />} />
-                <Route path="/einkauf" element={<Shopping />} />
-                <Route path="/rezepte" element={<Recipes />} />
-                <Route path="/profil" element={<Profile />} />
-                <Route path="/einstellungen" element={<Settings />} />
-                <Route path="*" element={<Navigate to="/heute" replace />} />
-              </Routes>
-            </motion.div>
-          </AnimatePresence>
+          {/*
+          No cross-fade between tabs. AnimatePresence mode="wait" waits for the
+          leaving page to report its exit, and that report gets lost when the
+          page's subtree contains drag-enabled motion components (the swipe
+          rows) that unmount at the same time — the old page then stays at
+          opacity 0 and the new one never mounts. A fade between tabs explains
+          nothing anyway (DESIGN.md: motion has to carry meaning), so the cut
+          is both more robust and more correct.
+        */}
+        <Routes location={location}>
+          <Route path="/" element={<Navigate to="/heute" replace />} />
+          <Route path="/heute" element={<Today />} />
+          <Route path="/vorrat" element={<Inventory />} />
+          <Route path="/einkauf" element={<Shopping />} />
+          <Route path="/rezepte" element={<Recipes />} />
+          <Route path="/profil" element={<Profile />} />
+          <Route path="/einstellungen" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/heute" replace />} />
+        </Routes>
         </main>
         <TabBar />
       </div>

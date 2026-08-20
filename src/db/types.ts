@@ -1,5 +1,7 @@
 // Domain types for the local-first data model (Dexie tables).
 
+import type { FoodCategory } from '@/lib/categories';
+
 export type Sex = 'm' | 'w' | 'd';
 export type ActivityLevel =
   | 'sedentary'
@@ -58,7 +60,7 @@ export interface InventoryItem {
   name: string;
   brand?: string;
   barcode?: string;
-  category?: string;
+  category?: FoodCategory;
   location: StorageLocation;
   amount: number;
   unit: Unit;
@@ -77,6 +79,7 @@ export interface InventoryItem {
 export interface ShoppingItem {
   id?: number;
   name: string;
+  category?: FoodCategory;
   amount?: number;
   unit?: Unit;
   checked: boolean;
@@ -131,6 +134,12 @@ export interface LocalFood {
   carbs: number;
   fat: number;
   defaultUnit: Unit;
+}
+
+/** Remembered manual corrections: lowercased name -> category. */
+export interface CategoryHint {
+  name: string;
+  category: FoodCategory;
 }
 
 /** Exactly one settings entry. */

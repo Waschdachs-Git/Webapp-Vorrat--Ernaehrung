@@ -7,6 +7,13 @@ import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
 import { nowISO } from '@/lib/date';
 import { unitLabel } from '@/lib/format';
+import {
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  classify,
+  type FoodCategory,
+} from '@/lib/categories';
+import { classifyWithHints, rememberCategory } from '@/db/database';
 import type {
   InventoryItem,
   Nutriments,
@@ -30,6 +37,9 @@ interface Draft {
   amount: string;
   unit: Unit;
   gramsPerPiece: string;
+  category: FoodCategory;
+  /** True once the user picked the category by hand. */
+  categoryTouched: boolean;
   bestBefore: string;
   isStaple: boolean;
   minStock: string;
@@ -43,6 +53,8 @@ const EMPTY_DRAFT: Draft = {
   amount: '',
   unit: 'g',
   gramsPerPiece: '',
+  category: 'other',
+  categoryTouched: false,
   bestBefore: '',
   isStaple: false,
   minStock: '',
@@ -91,6 +103,7 @@ export function AddInventorySheet({
         name: p.name,
         brand: p.brand ?? '',
         barcode: code,
+        category: classify(p.name, p.categoryTags),
         nutriments: p.nutrimentsPer100
           ? {
               kcal: String(p.nutrimentsPer100.kcal),
@@ -126,6 +139,7 @@ export function AddInventorySheet({
         draft.unit === 'pcs' && draft.gramsPerPiece
           ? parseFloat(draft.gramsPerPiece)
           : undefined,
+      category: draft.category,
       nutrimentsPer100: nutriments,
       bestBefore: draft.bestBefore || undefined,
       isStaple: draft.isStaple,
@@ -136,6 +150,10 @@ export function AddInventorySheet({
       await db.inventory.update(editItem.id, payload);
     } else {
       await db.inventory.add(payload as InventoryItem);
+    }
+    // A hand-picked category teaches the classifier for next time.
+    if (draft.categoryTouched) {
+      await rememberCategory(payload.name, draft.category);
     }
     await runAutoRestock();
     setSaving(false);
@@ -162,8 +180,38 @@ export function AddInventorySheet({
             <Input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              onBlur={async () => {
+                // Suggest a category once, unless the user already chose one.
+                if (draft.categoryTouched || !draft.name.trim()) return;
+                const guess = await classifyWithHints(draft.name);
+                setDraft((d) =>
+                  d.categoryTouched ? d : { ...d, category: guess },
+                );
+              }}
               placeholder="z. B. Haferflocken"
             />
+          </Field>
+
+          <Field
+            label="Kategorie"
+            hint="Wird automatisch erkannt – Korrekturen werden gemerkt."
+          >
+            <Select
+              value={draft.category}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  category: e.target.value as FoodCategory,
+                  categoryTouched: true,
+                })
+              }
+            >
+              {CATEGORY_ORDER.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="Marke (optional)">
             <Input
@@ -300,6 +348,8 @@ function draftFromItem(item: InventoryItem): Draft {
     unit: item.unit,
     gramsPerPiece:
       item.gramsPerPiece !== undefined ? String(item.gramsPerPiece) : '',
+    category: item.category ?? 'other',
+    categoryTouched: item.category !== undefined,
     bestBefore: item.bestBefore ?? '',
     isStaple: item.isStaple,
     minStock: item.minStock !== undefined ? String(item.minStock) : '',

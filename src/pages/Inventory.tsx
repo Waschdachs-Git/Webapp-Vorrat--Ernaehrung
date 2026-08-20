@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Search, Package, X } from 'lucide-react';
+import { Plus, Search, Package, X, LayoutList } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
@@ -10,6 +10,11 @@ import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
 import { daysUntil } from '@/lib/date';
 import { formatAmount, relativeBestBefore } from '@/lib/format';
+import {
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  type FoodCategory,
+} from '@/lib/categories';
 import type { InventoryItem, StorageLocation } from '@/db/types';
 
 const LOCATIONS: { key: StorageLocation; label: string }[] = [
@@ -19,6 +24,15 @@ const LOCATIONS: { key: StorageLocation; label: string }[] = [
 ];
 
 type Filter = 'all' | 'expired' | 'expiring' | 'low' | StorageLocation;
+
+/** Group by where it is stored, or by what kind of food it is. */
+type GroupMode = 'location' | 'category';
+
+interface Group {
+  key: string;
+  label: string;
+  items: InventoryItem[];
+}
 
 /** Urgency drives both the dot colour and the sort order. */
 type Urgency = 'expired' | 'soon' | 'low' | 'none';
@@ -41,11 +55,22 @@ const URGENCY_RANK: Record<Urgency, number> = {
   none: 0,
 };
 
+function byUrgencyThenDate(a: InventoryItem, b: InventoryItem): number {
+  const d = URGENCY_RANK[urgencyOf(b)] - URGENCY_RANK[urgencyOf(a)];
+  if (d !== 0) return d;
+  // Then by best-before, undated items last, finally alphabetical.
+  const da = a.bestBefore ? daysUntil(a.bestBefore) : Infinity;
+  const dbb = b.bestBefore ? daysUntil(b.bestBefore) : Infinity;
+  if (da !== dbb) return da - dbb;
+  return a.name.localeCompare(b.name, 'de');
+}
+
 export function Inventory(): ReactNode {
   const items = useLiveQuery(() => db.inventory.toArray(), []);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [groupMode, setGroupMode] = useState<GroupMode>('location');
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | undefined>();
   const showUndo = useUndo();
@@ -88,26 +113,32 @@ export function Inventory(): ReactNode {
     });
   }, [all, query, filter]);
 
-  const grouped = useMemo(() => {
-    const map: Record<StorageLocation, InventoryItem[]> = {
-      fridge: [],
-      freezer: [],
-      pantry: [],
-    };
-    for (const i of visible) map[i.location].push(i);
-    for (const loc of Object.keys(map) as StorageLocation[]) {
-      map[loc].sort((a, b) => {
-        const d = URGENCY_RANK[urgencyOf(b)] - URGENCY_RANK[urgencyOf(a)];
-        if (d !== 0) return d;
-        // Then by best-before, undated items last, finally alphabetical.
-        const da = a.bestBefore ? daysUntil(a.bestBefore) : Infinity;
-        const dbb = b.bestBefore ? daysUntil(b.bestBefore) : Infinity;
-        if (da !== dbb) return da - dbb;
-        return a.name.localeCompare(b.name, 'de');
-      });
+  const groups = useMemo<Group[]>(() => {
+    const buckets = new Map<string, InventoryItem[]>();
+    for (const i of visible) {
+      const key =
+        groupMode === 'location' ? i.location : (i.category ?? 'other');
+      const list = buckets.get(key);
+      if (list) list.push(i);
+      else buckets.set(key, [i]);
     }
-    return map;
-  }, [visible]);
+
+    for (const list of buckets.values()) list.sort(byUrgencyThenDate);
+
+    // Keep a stable, meaningful order: storage order or supermarket order.
+    const order: string[] =
+      groupMode === 'location'
+        ? LOCATIONS.map((l) => l.key)
+        : CATEGORY_ORDER;
+    const labelOf = (key: string): string =>
+      groupMode === 'location'
+        ? (LOCATIONS.find((l) => l.key === key)?.label ?? key)
+        : CATEGORY_LABELS[key as FoodCategory];
+
+    return order
+      .filter((key) => (buckets.get(key)?.length ?? 0) > 0)
+      .map((key) => ({ key, label: labelOf(key), items: buckets.get(key)! }));
+  }, [visible, groupMode]);
 
   const removeItem = async (item: InventoryItem) => {
     if (item.id === undefined) return;
@@ -139,6 +170,19 @@ export function Inventory(): ReactNode {
         title="Vorrat"
         action={
           <div className="flex items-center gap-1">
+            <button
+              onClick={() =>
+                setGroupMode((m) => (m === 'location' ? 'category' : 'location'))
+              }
+              aria-label={
+                groupMode === 'location'
+                  ? 'Nach Kategorie gruppieren'
+                  : 'Nach Lagerort gruppieren'
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-full text-muted active:bg-surface-2"
+            >
+              <LayoutList size={21} />
+            </button>
             <button
               onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
               aria-label={searchOpen ? 'Suche schließen' : 'Suchen'}
@@ -227,34 +271,29 @@ export function Inventory(): ReactNode {
           />
         ) : (
           <div className="flex flex-col gap-5">
-            {LOCATIONS.map(({ key, label }) =>
-              grouped[key].length > 0 ? (
-                <section key={key}>
-                  <h2 className="flex items-baseline gap-2 px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
-                    {label}
-                    <span className="tnum font-medium normal-case tracking-normal">
-                      {grouped[key].length}
-                    </span>
-                  </h2>
-                  {/* One bordered container per group; rows are separated by
-                      hairlines instead of each being its own card. */}
-                  <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-                    {grouped[key].map((item, idx) => (
-                      <SwipeRow
-                        key={item.id}
-                        className={idx > 0 ? 'border-t border-border' : ''}
-                        onSwipeLeft={() => removeItem(item)}
-                      >
-                        <InventoryRow
-                          item={item}
-                          onClick={() => openEdit(item)}
-                        />
-                      </SwipeRow>
-                    ))}
-                  </div>
-                </section>
-              ) : null,
-            )}
+            {groups.map((group) => (
+              <section key={group.key}>
+                <h2 className="flex items-baseline gap-2 px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
+                  {group.label}
+                  <span className="tnum font-medium normal-case tracking-normal">
+                    {group.items.length}
+                  </span>
+                </h2>
+                {/* One bordered container per group; rows are separated by
+                    hairlines instead of each being its own card. */}
+                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                  {group.items.map((item, idx) => (
+                    <SwipeRow
+                      key={item.id}
+                      className={idx > 0 ? 'border-t border-border' : ''}
+                      onSwipeLeft={() => removeItem(item)}
+                    >
+                      <InventoryRow item={item} onClick={() => openEdit(item)} />
+                    </SwipeRow>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </div>

@@ -8,8 +8,10 @@ import type {
   DiaryEntry,
   LocalFood,
   Settings,
+  CategoryHint,
 } from './types';
 import { SEED_FOODS } from './seed';
+import { classify, type FoodCategory } from '@/lib/categories';
 
 export const PROFILE_ID = 1;
 export const SETTINGS_ID = 1;
@@ -25,6 +27,7 @@ export class AppDatabase extends Dexie {
   diary!: Table<DiaryEntry, number>;
   foodsLocal!: Table<LocalFood, number>;
   settings!: Table<Settings, number>;
+  categoryHints!: Table<CategoryHint, string>;
 
   constructor() {
     super('vorrat-ernaehrung');
@@ -47,6 +50,11 @@ export class AppDatabase extends Dexie {
     this.version(2).stores({
       inventory: '++id, name, location, bestBefore, barcode, addedAt',
       shoppingList: '++id, name, source, addedAt',
+    });
+
+    // v3: remembered category corrections, keyed by the lowercased name.
+    this.version(3).stores({
+      categoryHints: 'name',
     });
   }
 }
@@ -79,4 +87,51 @@ export function ensureSeeded(force = false): Promise<void> {
     })();
   }
   return seedPromise;
+}
+
+/**
+ * Classification with the learned layer in front: a correction the user made
+ * for this name wins over both the OFF tags and the keyword rules.
+ */
+export async function classifyWithHints(
+  name: string,
+  offTags?: string[],
+): Promise<FoodCategory> {
+  const key = name.trim().toLowerCase();
+  if (key) {
+    const hint = await db.categoryHints.get(key);
+    if (hint) return hint.category;
+  }
+  return classify(name, offTags);
+}
+
+/** Remember a manual correction so the same product lands right next time. */
+export async function rememberCategory(
+  name: string,
+  category: FoodCategory,
+): Promise<void> {
+  const key = name.trim().toLowerCase();
+  if (!key) return;
+  await db.categoryHints.put({ name: key, category });
+}
+
+/**
+ * One-off pass over items that predate the category feature. Runs on startup
+ * and only touches rows that have no category yet.
+ */
+export async function backfillCategories(): Promise<void> {
+  const items = await db.inventory.toArray();
+  for (const item of items) {
+    if (item.category || item.id === undefined) continue;
+    await db.inventory.update(item.id, {
+      category: await classifyWithHints(item.name),
+    });
+  }
+  const shopping = await db.shoppingList.toArray();
+  for (const entry of shopping) {
+    if (entry.category || entry.id === undefined) continue;
+    await db.shoppingList.update(entry.id, {
+      category: await classifyWithHints(entry.name),
+    });
+  }
 }

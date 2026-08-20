@@ -167,6 +167,7 @@ export async function runAutoRestock(): Promise<void> {
     if (low && !existing) {
       await db.shoppingList.add({
         name: item.name,
+        category: item.category,
         amount: item.minStock,
         unit: item.unit,
         checked: false,

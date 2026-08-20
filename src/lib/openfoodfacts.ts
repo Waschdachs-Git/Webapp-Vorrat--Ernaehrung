@@ -5,6 +5,8 @@ export interface OffProduct {
   brand?: string;
   quantity?: string;
   nutrimentsPer100?: Nutriments;
+  /** Raw category hierarchy, broad to specific ("en:fruits", "en:apples"). */
+  categoryTags?: string[];
 }
 
 export type OffResult =
@@ -50,6 +52,7 @@ interface OffRawProduct {
   product_name_de?: string;
   brands?: string;
   quantity?: string;
+  categories_tags?: string[];
   nutriments?: Record<string, number | string | undefined>;
 }
 
@@ -71,6 +74,7 @@ function parseProduct(p: OffRawProduct): OffProduct {
     name,
     brand: p.brands ? p.brands.split(',')[0]?.trim() : undefined,
     quantity: p.quantity,
+    categoryTags: p.categories_tags,
     nutrimentsPer100: hasNutrition
       ? {
           kcal: kcal ?? 0,
