@@ -16,6 +16,7 @@ import { defaultMealType, repeatDiaryItem } from '@/lib/actions';
 import { formatTime } from '@/lib/date';
 import { buildRecommendations, type Recommendation } from '@/lib/recommendations';
 import type { DiaryEntry, DiaryItem, MealType } from '@/db/types';
+import { formatAmount } from '@/lib/format';
 
 const MEAL_LABELS: Record<MealType, string> = {
   breakfast: 'Frühstück',
@@ -121,7 +122,7 @@ export function Today(): ReactNode {
                   <RotateCcw size={14} className="text-accent" />
                   {item.name}
                   <span className="tnum text-faint">
-                    {item.amount} {item.unit}
+                    {formatAmount(item.amount, item.unit)}
                   </span>
                 </button>
               ))}
@@ -166,7 +167,7 @@ export function Today(): ReactNode {
                                 {item.name}
                               </p>
                               <p className="text-[12px] text-faint">
-                                {item.amount} {item.unit} ·{' '}
+                                {formatAmount(item.amount, item.unit)} ·{' '}
                                 {formatTime(entry.datetime)}
                               </p>
                             </div>

@@ -6,6 +6,7 @@ import { Button, Field, Input, Select, SegmentedControl } from './ui';
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
 import { nowISO } from '@/lib/date';
+import { unitLabel } from '@/lib/format';
 import type {
   InventoryItem,
   Nutriments,
@@ -265,7 +266,7 @@ export function AddInventorySheet({
           </label>
 
           {draft.isStaple && (
-            <Field label={`Mindestbestand (${draft.unit})`}>
+            <Field label={`Mindestbestand (${unitLabel(draft.unit)})`}>
               <Input
                 type="number"
                 inputMode="decimal"

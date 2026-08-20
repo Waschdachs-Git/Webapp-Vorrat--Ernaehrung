@@ -15,6 +15,7 @@ import { scaleNutriments } from '@/lib/nutrition';
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { diaryItemFromPer100, logFood } from '@/lib/actions';
 import type { MealType, Nutriments, Unit } from '@/db/types';
+import { formatAmount, unitLabel } from '@/lib/format';
 
 type Source = 'inventory' | 'foods' | 'free' | 'scan';
 
@@ -133,7 +134,7 @@ export function LogFoodSheet({
                     <PickRow
                       key={i.id}
                       title={i.name}
-                      sub={`${i.amount} ${i.unit} im Vorrat${i.brand ? ` · ${i.brand}` : ''}`}
+                      sub={`${formatAmount(i.amount, i.unit)} im Vorrat${i.brand ? ` · ${i.brand}` : ''}`}
                       onClick={() =>
                         setPicked({
                           name: i.name,
@@ -280,7 +281,7 @@ function PortionStep({
     <div className="flex flex-col gap-4">
       <SegmentedControl value={meal} onChange={setMeal} options={MEAL_OPTIONS} />
 
-      <Field label={`Menge (${picked.unit})`}>
+      <Field label={`Menge (${unitLabel(picked.unit)})`}>
         <Input
           type="number"
           inputMode="decimal"
@@ -302,7 +303,7 @@ function PortionStep({
                 : 'bg-surface-2 text-muted',
             )}
           >
-            {p} {picked.unit}
+            {formatAmount(p, picked.unit)}
           </button>
         ))}
       </div>
