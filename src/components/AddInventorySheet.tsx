@@ -113,6 +113,12 @@ export function AddInventorySheet({
             }
           : EMPTY_DRAFT.nutriments,
       });
+      // Replace the "searching" notice instead of leaving it standing.
+      setScanInfo(
+        p.nutrimentsPer100
+          ? 'Daten von Open Food Facts übernommen.'
+          : 'Produkt gefunden, aber ohne Nährwerte – bitte ergänzen.',
+      );
     } else {
       // Not found or error -> manual fallback, prefill barcode.
       setDraft({ ...EMPTY_DRAFT, barcode: code });
