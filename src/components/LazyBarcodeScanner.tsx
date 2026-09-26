@@ -17,7 +17,8 @@ export function LazyBarcodeScanner({
   onManual,
 }: {
   onResult: (code: string) => void;
-  onManual: () => void;
+  /** Omit when the caller offers its own switch to manual entry. */
+  onManual?: () => void;
 }): ReactNode {
   return (
     <div className="flex flex-col gap-3">
@@ -39,9 +40,11 @@ export function LazyBarcodeScanner({
 
       <BarcodeEntry onSubmit={onResult} />
 
-      <Button variant="ghost" onClick={onManual}>
-        Ohne Barcode weiter
-      </Button>
+      {onManual && (
+        <Button variant="ghost" onClick={onManual}>
+          Ohne Barcode weiter
+        </Button>
+      )}
     </div>
   );
 }

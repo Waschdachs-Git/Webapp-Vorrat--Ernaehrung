@@ -36,8 +36,8 @@ export function relativeBestBefore(isoDate: string): string {
     const n = -days;
     return n === 1 ? 'Seit 1 Tag abgelaufen' : `Seit ${n} Tagen abgelaufen`;
   }
-  if (days === 0) return 'Heute fällig';
-  if (days === 1) return 'Morgen fällig';
+  if (days === 0) return 'Läuft heute ab';
+  if (days === 1) return 'Läuft morgen ab';
   if (days <= 13) return `In ${days} Tagen`;
   if (days <= 60) {
     const w = Math.round(days / 7);

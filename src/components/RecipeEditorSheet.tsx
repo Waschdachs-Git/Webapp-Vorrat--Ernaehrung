@@ -175,7 +175,7 @@ export function RecipeEditorSheet({
             {(['kcal', 'protein', 'carbs', 'fat'] as const).map((k) => (
               <Field
                 key={k}
-                label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Carbs (g)' : 'Fett (g)'}
+                label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Kohlenhydrate (g)' : 'Fett (g)'}
               >
                 <Input
                   type="number"

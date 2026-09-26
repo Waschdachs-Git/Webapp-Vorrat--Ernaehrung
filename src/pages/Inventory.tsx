@@ -1,11 +1,11 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Search, Package, X, LayoutList } from 'lucide-react';
+import { Search, Package, X, LayoutList } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
 import { SwipeRow } from '@/components/SwipeRow';
-import { Button, EmptyState, Input, cx } from '@/components/ui';
+import { AddButton, EmptyState, Input, cx } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
 import { daysUntil } from '@/lib/date';
@@ -20,7 +20,7 @@ import type { InventoryItem, StorageLocation } from '@/db/types';
 const LOCATIONS: { key: StorageLocation; label: string }[] = [
   { key: 'fridge', label: 'Kühlschrank' },
   { key: 'freezer', label: 'Gefrierer' },
-  { key: 'pantry', label: 'Vorrat' },
+  { key: 'pantry', label: 'Vorratsschrank' },
 ];
 
 type Filter = 'all' | 'expired' | 'expiring' | 'low' | StorageLocation;
@@ -190,9 +190,7 @@ export function Inventory(): ReactNode {
             >
               {searchOpen ? <X size={21} /> : <Search size={21} />}
             </button>
-            <Button onClick={openAdd} className="h-10 px-3">
-              <Plus size={18} /> Hinzufügen
-            </Button>
+            <AddButton label="Artikel" onClick={openAdd} />
           </div>
         }
       />
@@ -237,23 +235,12 @@ export function Inventory(): ReactNode {
           {counts.low > 0 && (
             <Chip
               label="Wenig"
+              tone="low"
               count={counts.low}
               active={filter === 'low'}
               onClick={() => setFilter('low')}
             />
           )}
-          {LOCATIONS.map((loc) => {
-            const n = all.filter((i) => i.location === loc.key).length;
-            return n > 0 ? (
-              <Chip
-                key={loc.key}
-                label={loc.label}
-                count={n}
-                active={filter === loc.key}
-                onClick={() => setFilter(loc.key)}
-              />
-            ) : null;
-          })}
         </div>
       )}
 
@@ -270,18 +257,18 @@ export function Inventory(): ReactNode {
             hint="Andere Suche oder anderen Filter probieren."
           />
         ) : (
-          <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 md:items-start">
             {groups.map((group) => (
               <section key={group.key}>
-                <h2 className="flex items-baseline gap-2 px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
-                  {group.label}
-                  <span className="tnum font-medium normal-case tracking-normal">
-                    {group.items.length}
-                  </span>
-                </h2>
-                {/* One bordered container per group; rows are separated by
-                    hairlines instead of each being its own card. */}
+                {/* One bordered container per group; the group label lives
+                    inside it, the same way meals and shopping categories do. */}
                 <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                  <h2 className="flex items-baseline gap-2 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-faint">
+                    {group.label}
+                    <span className="tnum font-medium normal-case tracking-normal">
+                      {group.items.length}
+                    </span>
+                  </h2>
                   {group.items.map((item, idx) => (
                     <SwipeRow
                       key={item.id}
@@ -319,7 +306,7 @@ function Chip({
   label: string;
   count: number;
   active: boolean;
-  tone?: 'warn' | 'danger';
+  tone?: 'warn' | 'danger' | 'low';
   onClick: () => void;
 }): ReactNode {
   return (
@@ -338,7 +325,7 @@ function Chip({
         <span
           className={cx(
             'h-[7px] w-[7px] rounded-full',
-            tone === 'danger' ? 'bg-danger' : 'bg-warn',
+            tone === 'danger' ? 'bg-danger' : tone === 'low' ? 'bg-protein' : 'bg-warn',
           )}
         />
       )}
@@ -383,9 +370,11 @@ function InventoryRow({
           'h-[7px] w-[7px] shrink-0 rounded-full',
           urgency === 'expired'
             ? 'bg-danger'
-            : urgency === 'soon' || urgency === 'low'
+            : urgency === 'soon'
               ? 'bg-warn'
-              : 'bg-transparent',
+              : urgency === 'low'
+                ? 'bg-protein'
+                : 'bg-transparent',
         )}
       />
       <div className="min-w-0 flex-1">
@@ -398,9 +387,11 @@ function InventoryRow({
               'truncate text-[12.5px]',
               urgency === 'expired'
                 ? 'text-danger'
-                : urgency === 'soon' || urgency === 'low'
+                : urgency === 'soon'
                   ? 'text-warn'
-                  : 'text-faint',
+                  : urgency === 'low'
+                    ? 'text-protein'
+                    : 'text-faint',
             )}
           >
             {status}

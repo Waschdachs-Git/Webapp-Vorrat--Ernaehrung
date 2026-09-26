@@ -28,21 +28,28 @@ export function MacroBars({
         const value = consumed[m.key];
         const goal = targets[m.key];
         const pct = clampPct(value, goal);
+        const left = Math.round(goal - value);
         return (
           <div key={m.key}>
-            <div className="mb-1 flex items-baseline justify-between">
+            <div className="mb-1 flex items-baseline justify-between gap-2">
               <span className="text-[13px] font-medium text-muted">
                 {m.label}
+                <span className="tnum ml-1.5 font-normal text-faint">
+                  {Math.round(value)} / {Math.round(goal)} g
+                </span>
               </span>
-              <span className="tnum text-[12px] text-faint">
-                {Math.round(value)} / {Math.round(goal)} g
+              <span
+                className={`tnum text-[13px] font-medium ${left < 0 ? 'text-warn' : 'text-text'}`}
+              >
+                {left < 0 ? `${-left} g drüber` : `noch ${left} g`}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+              {/* scaleX instead of width: animates on the compositor. */}
               <motion.div
-                className={`h-full rounded-full ${m.colorClass}`}
-                initial={{ width: 0 }}
-                animate={{ width: `${pct}%` }}
+                className={`h-full w-full origin-left rounded-full ${m.colorClass}`}
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: pct / 100 }}
                 transition={{ type: 'spring', stiffness: 140, damping: 22 }}
               />
             </div>

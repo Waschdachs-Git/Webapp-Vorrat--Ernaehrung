@@ -4,122 +4,194 @@ import type {
   LocalFood,
   OwnRecipe,
   Targets,
-  Nutriments,
 } from '@/db/types';
 import { daysUntil } from './date';
+import { classifyByName } from './categories';
+
+export type RecommendationAction =
+  | { type: 'log'; inventoryId: number }
+  | { type: 'cook'; recipeId: number };
 
 export interface Recommendation {
   id: string;
-  kind: 'goal' | 'expiring' | 'variety';
+  kind: 'protein' | 'fit' | 'expiring' | 'variety';
   title: string;
   detail: string;
+  /** What tapping the card does. Without an action the card is read-only. */
+  action?: RecommendationAction;
+  actionLabel?: string;
 }
 
 /**
- * Combine three sources into a short, ranked list of suggestions (§4.7):
- *   1. Fill daily targets  – propose foods/recipes for the remaining macros.
- *   2. Use up expiring items – highlight stock with the nearest best-before.
- *   3. Variety             – de-prioritise things eaten/cooked very recently.
+ * Suggestions for the rest of the day (§4.7), built from what is actually in
+ * the kitchen rather than from a generic food list:
+ *   1. Expiring stock first – but never things that are already past their
+ *      date; eating those is the user's call, not ours to nudge.
+ *   2. Protein – only when protein lags behind calories *relatively*. In
+ *      absolute grams carbs always "lack" the most, which is how the old
+ *      version ended up recommending sugar, honey and raw flour.
+ *   3. A recipe that still fits into the remaining calories.
+ *   4. Variety – something not cooked recently.
  */
 export function buildRecommendations(args: {
+  targets: Targets;
   remaining: Targets;
   inventory: InventoryItem[];
   foods: LocalFood[];
   recipes: OwnRecipe[];
   recentDiary: DiaryEntry[];
 }): Recommendation[] {
-  const { remaining, inventory, foods, recipes, recentDiary } = args;
+  const { targets, remaining, inventory, foods, recipes, recentDiary } = args;
   const recs: Recommendation[] = [];
 
   const recentNames = new Set(
-    recentDiary
-      .flatMap((e) => e.items.map((i) => i.name.toLowerCase()))
-      .slice(0, 40),
+    recentDiary.flatMap((e) => e.items.map((i) => i.name.toLowerCase())),
+  );
+  const edibleStock = inventory.filter(
+    (i) =>
+      i.id !== undefined &&
+      i.amount > 0 &&
+      i.nutrimentsPer100 &&
+      !(i.bestBefore && daysUntil(i.bestBefore) < 0) &&
+      !isIngredient(i.name, i.category),
   );
 
-  // 1. Goal: which macro is most lacking relative to its target?
-  const lacking = mostLackingMacro(remaining);
-  if (lacking && remaining.kcal > 120) {
-    const candidates = [...foods]
-      .filter((f) => !recentNames.has(f.name.toLowerCase()))
-      .sort((a, b) => macroDensity(b, lacking) - macroDensity(a, lacking))
-      .slice(0, 3);
-    if (candidates.length) {
+  // 1. Expiring within two days.
+  const expiring = edibleStock
+    .filter((i) => i.bestBefore && daysUntil(i.bestBefore) <= 2)
+    .sort((a, b) => daysUntil(a.bestBefore!) - daysUntil(b.bestBefore!));
+  const first = expiring[0];
+  if (first?.id !== undefined) {
+    const days = daysUntil(first.bestBefore!);
+    const when = days <= 0 ? 'heute' : days === 1 ? 'morgen' : 'übermorgen';
+    const others = expiring.slice(1, 3).map((i) => i.name);
+    recs.push({
+      id: `expiring-${first.id}`,
+      kind: 'expiring',
+      title: `Zuerst verbrauchen: ${first.name}`,
+      detail:
+        `Läuft ${when} ab` +
+        (others.length ? ` · danach ${others.map(keepTogether).join(', ')}` : ''),
+      action: { type: 'log', inventoryId: first.id },
+      actionLabel: 'Loggen',
+    });
+  }
+
+  // 2. Protein lagging behind calories.
+  const kcalLeft = ratio(remaining.kcal, targets.kcal);
+  const proteinLeft = ratio(remaining.protein, targets.protein);
+  if (remaining.protein >= 20 && proteinLeft > kcalLeft + 0.05) {
+    const byDensity = (a: { protein: number; kcal: number }) =>
+      a.kcal > 0 ? (a.protein * 4) / a.kcal : 0;
+    const fromStock = [...edibleStock]
+      .filter((i) => byDensity(i.nutrimentsPer100!) >= 0.25)
+      .sort(
+        (a, b) => byDensity(b.nutrimentsPer100!) - byDensity(a.nutrimentsPer100!),
+      );
+    const top = fromStock[0];
+    const names = fromStock.slice(0, 3).map((i) => i.name);
+    const fallback = foods
+      .filter((f) => !isIngredient(f.name) && byDensity(f) >= 0.25)
+      .sort((a, b) => byDensity(b) - byDensity(a))
+      .slice(0, 3)
+      .map((f) => f.name);
+    recs.push({
+      id: 'protein',
+      kind: 'protein',
+      title: `Noch ${Math.round(remaining.protein)} g Protein offen`,
+      detail: names.length
+        ? `Im Vorrat: ${names.join(', ')}`
+        : `Z. B. ${fallback.join(', ')}`,
+      action: top?.id !== undefined ? { type: 'log', inventoryId: top.id } : undefined,
+      actionLabel: top ? `${top.name} loggen` : undefined,
+    });
+  }
+
+  // 3. An own recipe that still fits into today's calories.
+  if (remaining.kcal >= 300) {
+    const scored = recipes
+      .filter(
+        (r) =>
+          r.id !== undefined &&
+          r.nutritionPerServing &&
+          r.nutritionPerServing.kcal <= remaining.kcal + 100,
+      )
+      .map((r) => ({
+        recipe: r,
+        inStock: r.ingredients.filter((ing) =>
+          inventory.some((inv) => inv.amount > 0 && namesMatch(inv.name, ing.name)),
+        ).length,
+        recent: recentNames.has(r.title.toLowerCase()),
+      }))
+      .sort(
+        (a, b) =>
+          Number(a.recent) - Number(b.recent) ||
+          b.inStock - a.inStock ||
+          b.recipe.nutritionPerServing!.protein - a.recipe.nutritionPerServing!.protein,
+      );
+    const best = scored[0];
+    if (best?.recipe.id !== undefined) {
+      const n = best.recipe.nutritionPerServing!;
       recs.push({
-        id: `goal-${lacking}`,
-        kind: 'goal',
-        title: goalTitle(lacking, remaining),
-        detail: candidates.map((c) => c.name).join(', '),
+        id: `fit-${best.recipe.id}`,
+        kind: 'fit',
+        title: `Passt noch in deinen Tag: ${best.recipe.title}`,
+        detail:
+          `${Math.round(n.kcal)} kcal · ${Math.round(n.protein)} g Protein pro Portion` +
+          (best.inStock
+            ? ` · ${best.inStock}/${best.recipe.ingredients.length} Zutaten da`
+            : ''),
+        action: { type: 'cook', recipeId: best.recipe.id },
+        actionLabel: 'Kochen',
       });
     }
   }
 
-  // 2. Expiring: items within 3 days that are still in stock.
-  const expiring = inventory
-    .filter((i) => i.bestBefore && daysUntil(i.bestBefore) <= 3 && i.amount > 0)
-    .sort((a, b) => daysUntil(a.bestBefore!) - daysUntil(b.bestBefore!))
-    .slice(0, 3);
-  if (expiring.length) {
-    const usable = recipes.filter((r) =>
-      r.ingredients.some((ing) =>
-        expiring.some((e) => matchName(e.name, ing.name)),
-      ),
+  // 4. Variety, only if there is still room.
+  if (recs.length < 3) {
+    const fresh = recipes.find(
+      (r) =>
+        r.id !== undefined &&
+        !recentNames.has(r.title.toLowerCase()) &&
+        !recs.some((x) => x.id === `fit-${r.id}`),
     );
-    recs.push({
-      id: 'expiring',
-      kind: 'expiring',
-      title: 'Bald Ablaufendes verwerten',
-      detail:
-        expiring.map((e) => e.name).join(', ') +
-        (usable.length ? ` · Passt zu: ${usable[0]!.title}` : ''),
-    });
-  }
-
-  // 3. Variety: surface an own recipe not cooked recently.
-  const freshRecipe = recipes.find(
-    (r) => !recentNames.has(r.title.toLowerCase()),
-  );
-  if (freshRecipe && recs.length < 3) {
-    recs.push({
-      id: `variety-${freshRecipe.id}`,
-      kind: 'variety',
-      title: 'Für Abwechslung',
-      detail: `Lange nicht gekocht: ${freshRecipe.title}`,
-    });
+    if (fresh?.id !== undefined) {
+      recs.push({
+        id: `variety-${fresh.id}`,
+        kind: 'variety',
+        title: 'Für Abwechslung',
+        detail: `Lange nicht gekocht: ${fresh.title}`,
+        action: { type: 'cook', recipeId: fresh.id },
+        actionLabel: 'Kochen',
+      });
+    }
   }
 
   return recs.slice(0, 3);
 }
 
-type MacroKey = 'protein' | 'carbs' | 'fat';
-
-function mostLackingMacro(remaining: Targets): MacroKey | null {
-  const entries: [MacroKey, number][] = [
-    ['protein', remaining.protein],
-    ['carbs', remaining.carbs],
-    ['fat', remaining.fat],
-  ];
-  const positive = entries.filter(([, v]) => v > 0);
-  if (!positive.length) return null;
-  positive.sort((a, b) => b[1] - a[1]);
-  return positive[0]![0];
+function ratio(part: number, whole: number): number {
+  return whole > 0 ? Math.max(0, part) / whole : 0;
 }
 
-function macroDensity(food: Nutriments, macro: MacroKey): number {
-  return food[macro];
+/**
+ * Cooking ingredients are not a meal: nobody should be told to eat flour,
+ * sugar or oil to hit a macro target.
+ */
+function isIngredient(name: string, category?: string): boolean {
+  if (category === 'condiments') return true;
+  if (/(mehl|zucker|honig|salz|hefe|backpulver|stärke)/i.test(name)) return true;
+  if (/(^|\s)(öl|butter|olivenöl)/i.test(name) || /öl$/i.test(name)) return true;
+  return classifyByName(name) === 'condiments';
 }
 
-function goalTitle(macro: MacroKey, remaining: Targets): string {
-  const labels: Record<MacroKey, string> = {
-    protein: 'Protein',
-    carbs: 'Kohlenhydrate',
-    fat: 'Fett',
-  };
-  return `${labels[macro]} fehlt noch (${Math.round(remaining[macro])} g) – Vorschläge`;
+function namesMatch(a: string, b: string): boolean {
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x === y || x.includes(y) || y.includes(x);
 }
 
-function matchName(a: string, b: string): boolean {
-  const x = a.toLowerCase();
-  const y = b.toLowerCase();
-  return x.includes(y) || y.includes(x);
+/** "Vollmilch 3,5 %" must not break before the "%" – glue number and unit. */
+function keepTogether(name: string): string {
+  return name.replace(/(\d) (%|g|kg|ml|l)\b/g, '$1\u00a0$2').replace(/ %/g, '\u00a0%');
 }

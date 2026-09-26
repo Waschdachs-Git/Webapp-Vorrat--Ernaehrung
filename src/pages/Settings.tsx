@@ -83,11 +83,11 @@ export function Settings(): ReactNode {
         <Card>
           <div className="mb-3 flex items-center gap-2">
             <KeyRound size={18} className="text-muted" />
-            <h2 className="text-[15px] font-semibold text-text">Spoonacular API-Key</h2>
+            <h2 className="text-[15px] font-semibold text-text">Online-Rezeptsuche</h2>
           </div>
           <Field
-            label="API-Key"
-            hint="Für Rezeptsuche. Kostenlos auf spoonacular.com/food-api. Wird nur lokal gespeichert."
+            label="Schlüssel (API-Key)"
+            hint="Kostenloser Schlüssel von spoonacular.com/food-api. Bleibt nur auf diesem Gerät."
           >
             <Input
               type="password"

@@ -19,18 +19,31 @@ export function WeightChart({ data }: { data: WeightPoint[] }): ReactNode {
   return (
     <div className="h-44 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--c-border))" />
+        <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgb(var(--c-border))" />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: 'rgb(var(--c-faint))' }}
             stroke="rgb(var(--c-border))"
+            tickLine={false}
+            minTickGap={28}
+            padding={{ left: 12, right: 4 }}
           />
+          {/* Whole-kilo bounds and ticks: the old dataMin-1 domain produced
+              ticks like 74.3 that were clipped to ".3" in a 36px gutter. */}
           <YAxis
-            domain={['dataMin - 1', 'dataMax + 1']}
+            domain={[
+              (min: number) => Math.floor(min - 0.5),
+              (max: number) => Math.ceil(max + 0.5),
+            ]}
+            allowDecimals={false}
+            tickCount={4}
+            tickFormatter={(v: number) => `${v}`}
             tick={{ fontSize: 11, fill: 'rgb(var(--c-faint))' }}
             stroke="rgb(var(--c-border))"
-            width={36}
+            tickLine={false}
+            axisLine={false}
+            width={34}
           />
           <Tooltip
             contentStyle={{
@@ -40,7 +53,7 @@ export function WeightChart({ data }: { data: WeightPoint[] }): ReactNode {
               fontSize: 12,
               color: 'rgb(var(--c-text))',
             }}
-            formatter={(v: number) => [`${v} kg`, 'Gewicht']}
+            formatter={(v: number) => [`${v.toLocaleString('de-DE')} kg`, 'Gewicht']}
           />
           <Line
             type="monotone"

@@ -26,7 +26,7 @@ type Step = 'scan' | 'form';
 const LOCATION_OPTIONS: { value: StorageLocation; label: string }[] = [
   { value: 'fridge', label: 'Kühlschrank' },
   { value: 'freezer', label: 'Gefrierer' },
-  { value: 'pantry', label: 'Vorrat' },
+  { value: 'pantry', label: 'Schrank' },
 ];
 
 interface Draft {
@@ -171,10 +171,24 @@ export function AddInventorySheet({
     <BottomSheet
       open={open}
       onClose={close}
-      title={editItem ? 'Artikel bearbeiten' : step === 'scan' ? 'Barcode scannen' : 'Artikel hinzufügen'}
+      title={editItem ? 'Artikel bearbeiten' : 'Artikel hinzufügen'}
     >
+      {!editItem && (
+        // Scanning and typing are equal ways in – not "scan, or find the
+        // small link underneath".
+        <div className="mb-4">
+          <SegmentedControl
+            value={step}
+            onChange={setStep}
+            options={[
+              { value: 'scan', label: 'Barcode' },
+              { value: 'form', label: 'Manuell' },
+            ]}
+          />
+        </div>
+      )}
       {step === 'scan' && !editItem ? (
-        <LazyBarcodeScanner onResult={handleScan} onManual={() => setStep('form')} />
+        <LazyBarcodeScanner onResult={handleScan} />
       ) : (
         <div className="flex flex-col gap-3">
           {scanInfo && (
@@ -288,7 +302,7 @@ export function AddInventorySheet({
               {(['kcal', 'protein', 'carbs', 'fat'] as const).map((k) => (
                 <Field
                   key={k}
-                  label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Carbs (g)' : 'Fett (g)'}
+                  label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Kohlenhydrate (g)' : 'Fett (g)'}
                 >
                   <Input
                     type="number"

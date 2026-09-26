@@ -6,6 +6,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { ChevronDown, Plus } from 'lucide-react';
 
 function cx(...parts: Array<string | false | undefined | null>): string {
   return parts.filter(Boolean).join(' ');
@@ -19,7 +20,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-white active:opacity-90',
+  // Disabled primary turns neutral: white on pale green read as broken.
+  primary:
+    'bg-accent text-white active:opacity-90 disabled:bg-surface-2 disabled:text-faint disabled:opacity-100',
   secondary: 'bg-surface-2 text-text active:bg-border',
   ghost: 'bg-transparent text-muted active:bg-surface-2',
   danger: 'bg-transparent text-danger active:bg-danger/10',
@@ -110,11 +113,15 @@ export const Select = forwardRef<
   HTMLSelectElement,
   SelectHTMLAttributes<HTMLSelectElement>
 >(({ className, ...props }, ref) => (
-  <select
-    ref={ref}
-    className={cx(inputBase, 'appearance-none pr-9', className)}
-    {...props}
-  />
+  // Native select keeps the iOS picker; the chevron makes it read as one.
+  <div className={cx('relative', className)}>
+    <select ref={ref} className={cx(inputBase, 'appearance-none pr-9')} {...props} />
+    <ChevronDown
+      size={18}
+      aria-hidden
+      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-faint"
+    />
+  </div>
 ));
 Select.displayName = 'Select';
 
@@ -124,7 +131,8 @@ export function SegmentedControl<T extends string>({
   onChange,
 }: {
   options: { value: T; label: string }[];
-  value: T;
+  /** null = nothing selected yet. */
+  value: T | null;
   onChange: (v: T) => void;
 }): ReactNode {
   return (
@@ -133,6 +141,7 @@ export function SegmentedControl<T extends string>({
         <button
           key={o.value}
           type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
             'flex-1 rounded-lg px-2 py-2 text-[13px] font-medium transition-colors',
@@ -192,3 +201,22 @@ export function Badge({
 }
 
 export { cx };
+
+/**
+ * The one shape for "add something" in a page header – same size, icon and
+ * weight on every tab, so the primary action is always found in one place.
+ */
+export function AddButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}): ReactNode {
+  return (
+    <Button onClick={onClick} className="h-10 gap-1.5 !px-3.5 text-[15px]">
+      <Plus size={18} strokeWidth={2.4} className="shrink-0" />
+      {label}
+    </Button>
+  );
+}
