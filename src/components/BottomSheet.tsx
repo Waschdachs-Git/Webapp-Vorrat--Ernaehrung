@@ -41,7 +41,7 @@ export function BottomSheet({
           transition={{ duration: 0.15 }}
         >
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-[rgb(24_18_10/0.5)]"
             onClick={onClose}
             aria-hidden
           />
@@ -59,7 +59,7 @@ export function BottomSheet({
                 className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-border"
                 aria-hidden
               />
-              <h2 className="text-[17px] font-semibold text-text">{title}</h2>
+              <h2 className="font-serif text-[23px] font-semibold tracking-[-0.01em] text-text">{title}</h2>
               <button
                 onClick={onClose}
                 aria-label="Schließen"

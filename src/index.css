@@ -9,38 +9,43 @@
  * sparingly: amber = "expiring soon", red = "expired / very low".
  */
 :root {
-  --c-bg: 250 248 244; /* warm off-white */
+  /*
+   * "Cookbook meets iOS": warm paper ground, white borderless cards, ink text,
+   * one fresh herb green. Hairline borders are for dividers only – cards are
+   * separated by the ground, not by outlines.
+   */
+  --c-bg: 244 243 239;
   --c-surface: 255 255 255;
-  --c-surface-2: 245 242 236;
-  --c-border: 230 226 218;
-  --c-text: 28 27 24;
-  --c-muted: 92 89 82;
-  --c-faint: 116 112 104; /* ≥ 4.5:1 on the off-white ground */
-  --c-accent: 59 110 79; /* muted green */
-  --c-warn: 181 121 30; /* amber */
-  --c-danger: 178 58 50; /* red */
-  /* Muted macro trio; ochre is reserved for 'expiring' warnings. */
-  --c-protein: 86 118 160;
-  --c-carbs: 192 158 98;
-  --c-fat: 152 126 168;
+  --c-surface-2: 236 234 228; /* fills: inputs, segmented tracks, chips */
+  --c-border: 229 226 219; /* hairlines */
+  --c-text: 26 27 24;
+  --c-muted: 86 86 80;
+  --c-faint: 116 115 107; /* ≥ 4.5:1 on paper */
+  --c-accent: 36 122 78; /* herb green, overridden from settings */
+  --c-warn: 170 104 14; /* expiring */
+  --c-danger: 186 56 42; /* expired */
+  /* Macros drawn from the same earth-and-paper world as the ground. */
+  --c-protein: 176 86 58; /* terracotta */
+  --c-carbs: 206 162 72; /* wheat */
+  --c-fat: 118 132 66; /* olive */
 
   color-scheme: light;
 }
 
 .dark {
-  --c-bg: 18 18 16; /* near-black */
-  --c-surface: 28 28 25;
-  --c-surface-2: 46 45 40;
-  --c-border: 52 50 45;
-  --c-text: 236 233 226;
-  --c-muted: 178 174 164;
-  --c-faint: 140 136 126;
-  --c-accent: 122 178 142;
-  --c-warn: 214 158 78;
-  --c-danger: 224 110 100;
-  --c-protein: 128 158 200;
-  --c-carbs: 214 186 132;
-  --c-fat: 186 162 206;
+  --c-bg: 16 16 15;
+  --c-surface: 29 29 27;
+  --c-surface-2: 42 42 39;
+  --c-border: 52 52 48;
+  --c-text: 238 236 230;
+  --c-muted: 180 177 169;
+  --c-faint: 142 139 131;
+  --c-accent: 112 196 148;
+  --c-warn: 224 168 86;
+  --c-danger: 236 116 102;
+  --c-protein: 226 136 106;
+  --c-carbs: 226 190 112;
+  --c-fat: 168 184 104;
 
   color-scheme: dark;
 }
@@ -59,7 +64,9 @@ body {
   @apply bg-bg text-text font-sans antialiased;
   margin: 0;
   overscroll-behavior-y: none;
-  font-feature-settings: 'cv11', 'ss01';
+  /* Inter: single-storey a off, tabular digits where asked for. */
+  font-feature-settings: 'cv11', 'ss03';
+  letter-spacing: -0.006em;
 }
 
 /* Tabular numbers everywhere numbers carry meaning. */

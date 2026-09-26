@@ -22,7 +22,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const VARIANTS: Record<ButtonVariant, string> = {
   // Disabled primary turns neutral: white on pale green read as broken.
   primary:
-    'bg-accent text-white active:opacity-90 disabled:bg-surface-2 disabled:text-faint disabled:opacity-100',
+    'bg-accent text-white dark:text-bg active:opacity-90',
   secondary: 'bg-surface-2 text-text active:bg-border',
   ghost: 'bg-transparent text-muted active:bg-surface-2',
   danger: 'bg-transparent text-danger active:bg-danger/10',
@@ -33,7 +33,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       className={cx(
-        'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-medium transition-[opacity,background-color] duration-150 disabled:opacity-40',
+        'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] px-4 text-[15px] font-semibold tracking-[-0.01em] transition-[opacity,background-color,transform] duration-150 active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100',
         VARIANTS[variant],
         block && 'w-full',
         className,
@@ -57,7 +57,8 @@ export function Card({
     <div
       onClick={onClick}
       className={cx(
-        'rounded-2xl border border-border bg-surface p-4 shadow-card',
+        // No outline: the paper ground separates cards, a whisper of shadow lifts them.
+        'rounded-[18px] bg-surface p-4 shadow-card',
         onClick && 'cursor-pointer active:bg-surface-2',
         className,
       )}
@@ -78,7 +79,7 @@ export function Field({
 }): ReactNode {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[13px] font-medium text-muted">
+      <span className="mb-1.5 block text-[13px] font-semibold text-muted">
         {label}
       </span>
       {children}
@@ -87,8 +88,9 @@ export function Field({
   );
 }
 
+// Filled fields (iOS style) instead of outlined boxes; focus brings a ring.
 const inputBase =
-  'w-full min-h-[44px] rounded-xl border border-border bg-surface px-3.5 text-[15px] text-text placeholder:text-faint outline-none focus:border-accent transition-colors';
+  'w-full min-h-[44px] rounded-[12px] border border-transparent bg-surface-2 px-3.5 text-[15px] text-text placeholder:text-faint outline-none transition-colors focus:border-accent/50 focus:bg-surface focus:ring-4 focus:ring-accent/10';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
@@ -136,7 +138,7 @@ export function SegmentedControl<T extends string>({
   onChange: (v: T) => void;
 }): ReactNode {
   return (
-    <div className="flex gap-1 rounded-xl bg-surface-2 p-1">
+    <div className="flex gap-0.5 rounded-[12px] bg-surface-2 p-[3px]">
       {options.map((o) => (
         <button
           key={o.value}
@@ -144,10 +146,11 @@ export function SegmentedControl<T extends string>({
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'flex-1 rounded-lg px-2 py-2 text-[13px] font-medium transition-colors',
+            'min-h-[36px] flex-1 rounded-[10px] px-2 text-[14px] transition-colors',
             value === o.value
-              ? 'bg-surface text-text shadow-card'
-              : 'text-muted',
+              ? 'bg-surface font-semibold text-text shadow-pop'
+              // Unselected stays full-contrast text so it never reads as disabled.
+              : 'font-medium text-muted active:bg-surface/60',
           )}
         >
           {o.label}
@@ -169,7 +172,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
       {icon && <div className="text-faint">{icon}</div>}
-      <p className="text-[15px] font-medium text-muted">{title}</p>
+      <p className="font-serif text-[20px] font-medium text-text">{title}</p>
       {hint && <p className="max-w-xs text-[13px] text-faint">{hint}</p>}
     </div>
   );
@@ -191,7 +194,7 @@ export function Badge({
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-medium',
         tones[tone],
       )}
     >
@@ -209,14 +212,105 @@ export { cx };
 export function AddButton({
   label,
   onClick,
+  prominent = false,
 }: {
   label: string;
   onClick: () => void;
+  /** Filled only for the one main action of the app (Heute); elsewhere tonal. */
+  prominent?: boolean;
 }): ReactNode {
   return (
-    <Button onClick={onClick} className="h-10 gap-1.5 !px-3.5 text-[15px]">
+    <Button
+      onClick={onClick}
+      className={cx(
+        '!min-h-0 h-9 gap-1.5 !px-3 text-[15px]',
+        !prominent && '!bg-accent-soft !text-accent',
+      )}
+    >
       <Plus size={18} strokeWidth={2.4} className="shrink-0" />
       {label}
     </Button>
+  );
+}
+
+/**
+ * Editorial section: serif title on the paper ground, optional trailing
+ * action, content below. Replaces the "everything in a white card" pattern.
+ */
+export function Section({
+  title,
+  action,
+  children,
+  className,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}): ReactNode {
+  return (
+    <section className={className}>
+      <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-text/80 dark:border-text/35 pb-2">
+        <h2 className="font-serif text-[22px] font-semibold tracking-[-0.01em] text-text">
+          {title}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Text tabs with an underline – filters without pills. */
+export function TextTabs<T extends string>({
+  options,
+  value,
+  onChange,
+  trailing,
+}: {
+  options: { value: T; label: string; count?: number; tone?: 'warn' | 'danger' }[];
+  value: T;
+  onChange: (v: T) => void;
+  trailing?: ReactNode;
+}): ReactNode {
+  return (
+    <div className="flex items-center gap-4 border-b border-border">
+      <div className="no-scrollbar -mb-px flex min-w-0 flex-1 gap-5 overflow-x-auto">
+        {options.map((o) => {
+          const active = o.value === value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(o.value)}
+              className={cx(
+                'flex min-h-[44px] shrink-0 items-center gap-1.5 border-b-2 text-[15px] transition-colors',
+                active
+                  ? 'border-text font-semibold text-text'
+                  : 'border-transparent font-medium text-muted',
+              )}
+            >
+              {o.label}
+              {o.count !== undefined && (
+                <span
+                  className={cx(
+                    'tnum text-[13px]',
+                    o.tone === 'danger'
+                      ? 'text-danger'
+                      : o.tone === 'warn'
+                        ? 'text-warn'
+                        : 'text-faint',
+                  )}
+                >
+                  {o.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {trailing && <div className="shrink-0">{trailing}</div>}
+    </div>
   );
 }

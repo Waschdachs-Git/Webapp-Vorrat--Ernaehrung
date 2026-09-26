@@ -1,6 +1,10 @@
 import { type ReactNode } from 'react';
 
-/** Consistent editorial page header with optional trailing action. */
+/**
+ * One header grid for every tab: title and action share a row and are
+ * vertically centred on each other; the subtitle sits underneath, so the
+ * action lands in the same spot whether or not a page has a subtitle.
+ */
 export function PageHeader({
   title,
   subtitle,
@@ -11,16 +15,14 @@ export function PageHeader({
   action?: ReactNode;
 }): ReactNode {
   return (
-    <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-2">
-      <div className="min-w-0">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-text">
+    <header className="px-5 pb-5 pt-3">
+      <div className="flex min-h-[48px] items-center justify-between gap-3">
+        <h1 className="min-w-0 truncate font-serif text-[34px] font-semibold leading-none tracking-[-0.015em] text-text">
           {title}
         </h1>
-        {subtitle && (
-          <p className="mt-0.5 text-[14px] text-muted">{subtitle}</p>
-        )}
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      {action && <div className="shrink-0 pt-1">{action}</div>}
+      {subtitle && <p className="mt-1.5 text-[15px] text-muted">{subtitle}</p>}
     </header>
   );
 }

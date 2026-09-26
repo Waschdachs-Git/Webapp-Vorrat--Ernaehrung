@@ -15,12 +15,12 @@ import { exportData, importData } from '@/lib/backup';
 import type { ThemeMode } from '@/db/types';
 
 const ACCENT_PRESETS = [
-  '#3b6e4f', // muted green (default)
-  '#4c6ea8', // slate blue
-  '#9c6e4f', // clay
-  '#7a5bb0', // muted violet
-  '#b5791e', // amber
-  '#46807a', // teal
+  '#247a4e', // herb green (default)
+  '#2f6db5', // cobalt
+  '#b4532f', // terracotta
+  '#7b52ab', // plum
+  '#0f7c80', // teal
+  '#3d3d3a', // graphite
 ];
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -83,7 +83,7 @@ export function Settings(): ReactNode {
         <Card>
           <div className="mb-3 flex items-center gap-2">
             <KeyRound size={18} className="text-muted" />
-            <h2 className="text-[15px] font-semibold text-text">Online-Rezeptsuche</h2>
+            <h2 className="font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Online-Rezeptsuche</h2>
           </div>
           <Field
             label="Schlüssel (API-Key)"
@@ -111,7 +111,7 @@ export function Settings(): ReactNode {
         <Card>
           <div className="mb-3 flex items-center gap-2">
             <Palette size={18} className="text-muted" />
-            <h2 className="text-[15px] font-semibold text-text">Darstellung</h2>
+            <h2 className="font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Darstellung</h2>
           </div>
 
           <Field label="Modus">
@@ -145,7 +145,7 @@ export function Settings(): ReactNode {
 
         {/* Backup */}
         <Card>
-          <h2 className="mb-1 text-[15px] font-semibold text-text">Backup</h2>
+          <h2 className="mb-1 font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Backup</h2>
           <p className="mb-3 text-[13px] text-muted">
             Alle Daten liegen lokal in diesem Browser. Exportiere regelmäßig –
             das schützt vor Datenverlust, falls Safari-Daten gelöscht werden.

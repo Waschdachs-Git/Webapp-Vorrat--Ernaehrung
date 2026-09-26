@@ -16,7 +16,9 @@ import { classify, type FoodCategory } from '@/lib/categories';
 export const PROFILE_ID = 1;
 export const SETTINGS_ID = 1;
 
-export const DEFAULT_ACCENT = '#3b6e4f';
+export const DEFAULT_ACCENT = '#247a4e';
+/** Previous default; users who never changed it move to the new one. */
+const LEGACY_DEFAULT_ACCENT = '#3b6e4f';
 
 export class AppDatabase extends Dexie {
   profile!: Table<Profile, number>;
@@ -73,6 +75,9 @@ export function ensureSeeded(force = false): Promise<void> {
   if (!seedPromise) {
     seedPromise = (async () => {
       const existingSettings = await db.settings.get(SETTINGS_ID);
+      if (existingSettings?.accentColor.toLowerCase() === LEGACY_DEFAULT_ACCENT) {
+        await db.settings.update(SETTINGS_ID, { accentColor: DEFAULT_ACCENT });
+      }
       if (!existingSettings) {
         await db.settings.put({
           id: SETTINGS_ID,

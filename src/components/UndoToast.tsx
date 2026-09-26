@@ -73,7 +73,7 @@ export function UndoToastProvider({
           >
             <div
               role="status"
-              className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-3 shadow-card"
+              className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-[18px] bg-surface shadow-card px-4 py-3 shadow-card"
             >
               <span className="truncate text-[14px] text-text">
                 {toast.message}
