@@ -1,8 +1,9 @@
 # Vorrat & Ernährung
 
 Eine lokale, installierbare **PWA** für iPad zur Verwaltung von
-Lebensmittel-Vorrat und Ernährung. Single-User, kein Login, alle Daten bleiben
-lokal auf dem Gerät (IndexedDB). Oberfläche auf Deutsch, offline-fähig.
+Lebensmittel-Vorrat und Ernährung. Local-first: alle Daten liegen auf dem Gerät
+(IndexedDB); wer will, meldet sich per E-Mail-Code an und gleicht iPhone und
+iPad über Dexie Cloud ab. Oberfläche auf Deutsch, offline-fähig.
 
 > Vorrat, Einkauf, Rezepte und Ernährungs-Tracking hängen zusammen: Ein
 > „gegessen/gekocht"-Vorgang bucht ins Tagebuch **und** zieht den Vorrat ab.
@@ -55,8 +56,9 @@ npm run typecheck # nur TypeScript prüfen
 Die Rezeptsuche nutzt Spoonacular. Hol dir einen **kostenlosen** API-Key auf
 <https://spoonacular.com/food-api> und trage ihn in der App unter
 **Profil → Einstellungen → Spoonacular API-Key** ein. Ohne Key bleibt die App
-voll nutzbar; nur die Spoonacular-Funktionen sind ausgegraut. Der Key wird nur
-lokal gespeichert (keine Secrets im Code).
+voll nutzbar; nur die Spoonacular-Funktionen sind ausgegraut. Der Key liegt in
+den Einstellungen der App (keine Secrets im Code) und wird bei aktiver
+Synchronisierung mit dem eigenen Konto abgeglichen.
 
 ## Deploy (HTTPS automatisch)
 
@@ -88,9 +90,30 @@ liefern automatisch HTTPS.
 4. Die App startet ab jetzt im Vollbild (standalone), wie eine native App, und
    funktioniert offline für alle lokalen Daten.
 
+## Synchronisierung (Dexie Cloud)
+
+Die App nutzt [Dexie Cloud](https://dexie.org/cloud/) zum Abgleich zwischen
+Geräten. Die Datenbank-URL steht in `src/db/cloudConfig.ts` (überschreibbar
+per `VITE_DEXIE_CLOUD_URL`, leer = rein lokal). Sie ist kein Geheimnis:
+Zugriff gibt es nur mit Login, und nur freigegebene Origins dürfen verbinden.
+
+- **Anmelden:** Profil → Einstellungen → Synchronisierung → Anmelden (E-Mail +
+  Code). Die Daten des Geräts wandern dabei ins Konto.
+- **Zweites Gerät:** im Onboarding „Anmelden" – oder in den Einstellungen
+  „Daten von dort laden", wenn das Gerät schon eigene Daten hat (die werden
+  dann ersetzt).
+- **Neue Domain freigeben:** `npx dexie-cloud whitelist https://…` (braucht die
+  `dexie-cloud.key` des Datenbank-Owners – nie committen).
+- **Nutzer dauerhaft freischalten:** Im Free-Plan synchronisieren neue Nutzer
+  30 Tage als „Evaluation"; im [Dexie Cloud Manager](https://manager.dexie.cloud)
+  auf „Production" stellen (3 Production-Nutzer sind kostenlos).
+
+Beim ersten Start nach dem Update zieht die App die Daten aus der alten lokalen
+Datenbank automatisch in die neue (String-IDs, Verweise werden umgeschrieben).
+
 ## Datensicherung
 
-Alle Daten liegen ausschließlich im Browser des Geräts. **Regelmäßig
+Ohne Anmeldung liegen alle Daten ausschließlich im Browser des Geräts. **Regelmäßig
 exportieren** (Profil → Einstellungen → Backup → Export). Das schützt vor
 Datenverlust, falls die Safari-Daten gelöscht werden. Wiederherstellen über
 Import.

@@ -9,6 +9,8 @@ import {
   Check,
 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { SyncCard } from '@/components/SyncCard';
+import { cloudEnabled } from '@/db/database';
 import { Button, Card, Field, Input, SegmentedControl, cx } from '@/components/ui';
 import { useSettings, updateSettings } from '@/hooks/useSettings';
 import { exportData, importData } from '@/lib/backup';
@@ -79,6 +81,8 @@ export function Settings(): ReactNode {
       />
 
       <div className="flex flex-col gap-5 px-5">
+        {cloudEnabled && <SyncCard />}
+
         {/* Spoonacular */}
         <Card>
           <div className="mb-3 flex items-center gap-2">
@@ -87,7 +91,7 @@ export function Settings(): ReactNode {
           </div>
           <Field
             label="Schlüssel (API-Key)"
-            hint="Kostenloser Schlüssel von spoonacular.com/food-api. Bleibt nur auf diesem Gerät."
+            hint="Kostenloser Schlüssel von spoonacular.com/food-api. Wird nur an Spoonacular gesendet."
           >
             <Input
               type="password"
@@ -147,8 +151,9 @@ export function Settings(): ReactNode {
         <Card>
           <h2 className="mb-1 font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Backup</h2>
           <p className="mb-3 text-[13px] text-muted">
-            Alle Daten liegen lokal in diesem Browser. Exportiere regelmäßig –
-            das schützt vor Datenverlust, falls Safari-Daten gelöscht werden.
+            Ohne Anmeldung liegen alle Daten nur in diesem Browser. Exportiere
+            regelmäßig – das schützt vor Datenverlust, falls Safari-Daten
+            gelöscht werden.
           </p>
           <div className="flex gap-2">
             <Button variant="secondary" block onClick={() => exportData()}>
@@ -184,8 +189,9 @@ export function Settings(): ReactNode {
               </p>
               <p className="mt-1 text-[13px] text-muted">
                 „{pendingImport.name}“ ersetzt Vorrat, Tagebuch, Rezepte,
-                Einkaufsliste und Profil vollständig. Das lässt sich nicht
-                rückgängig machen – am besten vorher exportieren.
+                Einkaufsliste und Profil vollständig – bei aktiver
+                Synchronisierung auf allen Geräten. Das lässt sich nicht
+                rückgängig machen, am besten vorher exportieren.
               </p>
               <div className="mt-3 flex gap-2">
                 <Button

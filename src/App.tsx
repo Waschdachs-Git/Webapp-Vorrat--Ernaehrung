@@ -12,9 +12,11 @@ import {
   ensureSeeded,
   backfillCategories,
 } from '@/db/database';
+import { migrateLegacyDatabase } from '@/db/transfer';
 import { useTheme } from '@/hooks/useTheme';
 import { SideNav, TabBar } from '@/components/TabBar';
 import { UndoToastProvider } from '@/components/UndoToast';
+import { CloudLoginSheet } from '@/components/CloudLoginSheet';
 import { Today } from '@/pages/Today';
 import { Inventory } from '@/pages/Inventory';
 import { Onboarding } from '@/pages/Onboarding';
@@ -56,7 +58,9 @@ export function App(): ReactNode {
 
   useEffect(() => {
     // Always release the splash, even if seeding fails, so the UI never hangs.
-    ensureSeeded()
+    migrateLegacyDatabase()
+      .catch((err) => console.error('Migration fehlgeschlagen:', err))
+      .then(() => ensureSeeded())
       // Items created before categories existed get one classified here.
       .then(() => backfillCategories())
       .catch((err) => console.error('Initialisierung fehlgeschlagen:', err))
@@ -68,11 +72,17 @@ export function App(): ReactNode {
     return <SplashScreen />;
   }
 
-  if (profile === null) {
-    return <Onboarding onDone={() => { /* live query re-renders automatically */ }} />;
-  }
-
-  return <AppShell />;
+  return (
+    <>
+      {profile === null ? (
+        <Onboarding onDone={() => { /* live query re-renders automatically */ }} />
+      ) : (
+        <AppShell />
+      )}
+      {/* Login dialogs can be started from onboarding and from settings. */}
+      <CloudLoginSheet />
+    </>
+  );
 }
 
 function AppShell(): ReactNode {

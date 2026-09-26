@@ -261,12 +261,12 @@ export function Today(): ReactNode {
         />
       )}
       <DiaryItemSheet
-        key={editTarget ? `${editTarget.entryId}-${editTarget.itemIndex}` : 'none'}
+        key={editTarget ? `${editTarget.entryId}-${editTarget.itemIndex}` : 'edit-none'}
         target={editTarget}
         onClose={() => setEditTarget(null)}
       />
       <CookRecipeSheet
-        key={cookTarget?.id ?? 'none'}
+        key={cookTarget?.id ?? 'cook-none'}
         recipe={cookTarget}
         onClose={() => setCookTarget(null)}
       />

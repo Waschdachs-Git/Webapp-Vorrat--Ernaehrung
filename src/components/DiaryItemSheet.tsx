@@ -7,7 +7,7 @@ import type { DiaryItem } from '@/db/types';
 import { formatAmount, unitLabel } from '@/lib/format';
 
 export interface DiaryItemRef {
-  entryId: number;
+  entryId: string;
   itemIndex: number;
   item: DiaryItem;
 }
