@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -13,15 +13,36 @@ import {
   backfillCategories,
 } from '@/db/database';
 import { useTheme } from '@/hooks/useTheme';
-import { TabBar } from '@/components/TabBar';
+import { SideNav, TabBar } from '@/components/TabBar';
 import { UndoToastProvider } from '@/components/UndoToast';
 import { Today } from '@/pages/Today';
 import { Inventory } from '@/pages/Inventory';
-import { Shopping } from '@/pages/Shopping';
-import { Recipes } from '@/pages/Recipes';
-import { Profile } from '@/pages/Profile';
-import { Settings } from '@/pages/Settings';
 import { Onboarding } from '@/pages/Onboarding';
+
+// Heute and Vorrat are the everyday tabs and ship in the main bundle; the
+// rest load on demand and are prefetched once the app is idle.
+const loadShopping = () => import('@/pages/Shopping');
+const loadRecipes = () => import('@/pages/Recipes');
+const loadProfile = () => import('@/pages/Profile');
+const loadSettings = () => import('@/pages/Settings');
+const Shopping = lazy(() => loadShopping().then((m) => ({ default: m.Shopping })));
+const Recipes = lazy(() => loadRecipes().then((m) => ({ default: m.Recipes })));
+const Profile = lazy(() => loadProfile().then((m) => ({ default: m.Profile })));
+const Settings = lazy(() => loadSettings().then((m) => ({ default: m.Settings })));
+
+function prefetchPages(): void {
+  const run = () => {
+    void loadShopping();
+    void loadRecipes();
+    void loadProfile();
+    void loadSettings();
+  };
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 3000 });
+  } else {
+    setTimeout(run, 1500);
+  }
+}
 
 export function App(): ReactNode {
   useTheme();
@@ -56,11 +77,14 @@ export function App(): ReactNode {
 
 function AppShell(): ReactNode {
   const location = useLocation();
+  useEffect(prefetchPages, []);
 
   return (
     <UndoToastProvider>
-      <div className="mx-auto flex h-[100dvh] max-w-3xl flex-col">
-        <main className="flex-1 overflow-y-auto pt-safe">
+      <div className="flex h-[100dvh] flex-col md:flex-row">
+        <SideNav />
+        <main className="min-w-0 flex-1 overflow-y-auto pt-safe">
+          <div className="mx-auto w-full max-w-3xl md:max-w-5xl md:pt-4">
           {/*
           No cross-fade between tabs. AnimatePresence mode="wait" waits for the
           leaving page to report its exit, and that report gets lost when the
@@ -70,6 +94,7 @@ function AppShell(): ReactNode {
           nothing anyway (DESIGN.md: motion has to carry meaning), so the cut
           is both more robust and more correct.
         */}
+        <Suspense fallback={<div className="h-40" aria-busy="true" />}>
         <Routes location={location}>
           <Route path="/" element={<Navigate to="/heute" replace />} />
           <Route path="/heute" element={<Today />} />
@@ -80,8 +105,12 @@ function AppShell(): ReactNode {
           <Route path="/einstellungen" element={<Settings />} />
           <Route path="*" element={<Navigate to="/heute" replace />} />
         </Routes>
+        </Suspense>
+          </div>
         </main>
-        <TabBar />
+        <div className="md:hidden">
+          <TabBar />
+        </div>
       </div>
     </UndoToastProvider>
   );

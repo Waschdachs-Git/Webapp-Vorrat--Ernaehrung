@@ -14,14 +14,15 @@
   --c-surface-2: 245 242 236;
   --c-border: 230 226 218;
   --c-text: 28 27 24;
-  --c-muted: 107 104 96;
-  --c-faint: 156 152 142;
+  --c-muted: 92 89 82;
+  --c-faint: 116 112 104; /* ≥ 4.5:1 on the off-white ground */
   --c-accent: 59 110 79; /* muted green */
   --c-warn: 181 121 30; /* amber */
   --c-danger: 178 58 50; /* red */
-  --c-protein: 76 110 168;
-  --c-carbs: 181 121 30;
-  --c-fat: 156 110 178;
+  /* Muted macro trio; ochre is reserved for 'expiring' warnings. */
+  --c-protein: 86 118 160;
+  --c-carbs: 192 158 98;
+  --c-fat: 152 126 168;
 
   color-scheme: light;
 }
@@ -29,17 +30,17 @@
 .dark {
   --c-bg: 18 18 16; /* near-black */
   --c-surface: 28 28 25;
-  --c-surface-2: 38 37 33;
+  --c-surface-2: 46 45 40;
   --c-border: 52 50 45;
   --c-text: 236 233 226;
-  --c-muted: 162 158 148;
-  --c-faint: 118 114 105;
+  --c-muted: 178 174 164;
+  --c-faint: 140 136 126;
   --c-accent: 122 178 142;
   --c-warn: 214 158 78;
   --c-danger: 224 110 100;
-  --c-protein: 124 158 214;
-  --c-carbs: 214 158 78;
-  --c-fat: 198 154 214;
+  --c-protein: 128 158 200;
+  --c-carbs: 214 186 132;
+  --c-fat: 186 162 206;
 
   color-scheme: dark;
 }

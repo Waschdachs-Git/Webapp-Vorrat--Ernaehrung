@@ -1,11 +1,11 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, ShoppingCart, Check, RefreshCw } from 'lucide-react';
+import { Plus, ShoppingCart, Check, RefreshCw, PackagePlus } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
 import { SwipeRow } from '@/components/SwipeRow';
-import { Button, Badge, EmptyState, Input, cx } from '@/components/ui';
+import { Button, EmptyState, Input, cx } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
 import { nowISO } from '@/lib/date';
 import type { ShoppingItem } from '@/db/types';
@@ -92,7 +92,7 @@ export function Shopping(): ReactNode {
     <div className="pb-24">
       <PageHeader title="Einkauf" subtitle={`${open.length} offen`} />
 
-      <div className="px-5">
+      <div className="max-w-2xl px-5">
         <div className="mb-4 flex gap-2">
           <Input
             placeholder="Artikel hinzufügen…"
@@ -112,43 +112,56 @@ export function Shopping(): ReactNode {
             hint="Grundnahrungsmittel landen hier automatisch, wenn der Bestand sinkt."
           />
         ) : (
-          <div className="flex flex-col gap-2">
-            {openByCategory.map((group) => (
-              <section key={group.category} className="mb-1">
-                <h2 className="px-1 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-faint">
-                  {CATEGORY_LABELS[group.category]}
-                </h2>
-                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-                  {group.items.map((item, idx) => (
-                    <SwipeRow
-                      key={item.id}
-                      className={idx > 0 ? 'border-t border-border' : ''}
-                      onSwipeRight={() => toggle(item)}
-                      rightLabel="Erledigt"
-                      onSwipeLeft={() => removeItem(item)}
+          <div className="flex flex-col gap-5">
+            {open.length > 0 ? (
+              /* One continuous list; categories are quiet sub-headings inside
+                 it, in supermarket order. */
+              <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                {openByCategory.map((group, gi) => (
+                  <section key={group.category}>
+                    <h2
+                      className={cx(
+                        'px-4 pb-0.5 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-faint',
+                        gi > 0 && 'border-t border-border',
+                      )}
                     >
-                      <ShoppingRow
-                        item={item}
-                        onToggle={() => toggle(item)}
-                        onTakeover={() => setRestockItem(item)}
-                      />
-                    </SwipeRow>
-                  ))}
-                </div>
-              </section>
-            ))}
+                      {CATEGORY_LABELS[group.category]}
+                    </h2>
+                    {group.items.map((item, idx) => (
+                      <SwipeRow
+                        key={item.id}
+                        className={cx(idx > 0 && 'border-t border-border')}
+                        onSwipeRight={() => toggle(item)}
+                        rightLabel="Erledigt"
+                        onSwipeLeft={() => removeItem(item)}
+                      >
+                        <ShoppingRow
+                          item={item}
+                          onToggle={() => toggle(item)}
+                          onTakeover={() => setRestockItem(item)}
+                        />
+                      </SwipeRow>
+                    ))}
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="px-1 text-[14px] text-muted">
+                Alles erledigt. 🎉
+              </p>
+            )}
 
             {done.length > 0 && (
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="text-[13px] font-semibold uppercase tracking-wide text-faint">
-                    Erledigt
+              <div>
+                <div className="mb-2 flex items-center justify-between px-1">
+                  <h2 className="text-[12px] font-semibold uppercase tracking-wider text-faint">
+                    Im Wagen · {done.length}
                   </h2>
                   <button
                     onClick={clearDone}
-                    className="text-[13px] font-medium text-muted active:opacity-60"
+                    className="min-h-[36px] text-[13px] font-medium text-muted active:opacity-60"
                   >
-                    Liste leeren
+                    Erledigte entfernen
                   </button>
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-border bg-surface">
@@ -200,48 +213,56 @@ function ShoppingRow({
   onTakeover: () => void;
 }): ReactNode {
   return (
-    <div className="flex items-center gap-3 bg-surface px-3 py-3">
+    <div className="flex items-center bg-surface">
+      {/* The whole row toggles – in a shop you tap with a thumb, not a pen. */}
       <button
         type="button"
         onClick={onToggle}
-        aria-label={item.checked ? 'Als offen markieren' : 'Abhaken'}
-        className={cx(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-          item.checked ? 'border-accent bg-accent text-white' : 'border-border',
-        )}
+        aria-pressed={item.checked}
+        aria-label={`${item.name} ${item.checked ? 'wieder offen' : 'abhaken'}`}
+        className="flex min-h-[48px] min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left active:bg-surface-2"
       >
-        {item.checked && <Check size={16} />}
-      </button>
-      <div className="min-w-0 flex-1">
-        <p
+        <span
           className={cx(
-            'truncate text-[15px]',
-            item.checked ? 'text-faint line-through' : 'text-text',
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+            item.checked ? 'border-accent bg-accent text-white' : 'border-faint/60',
           )}
         >
-          {item.name}
-        </p>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          {item.amount !== undefined && (
-            <span className="text-[12px] text-faint">
-              {/* Shopping entries may carry an amount without a unit. */}
-              {item.unit ? formatAmount(item.amount, item.unit) : item.amount}
+          {item.checked && <Check size={14} strokeWidth={3} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className={cx(
+              'block truncate text-[15px]',
+              item.checked ? 'text-faint line-through' : 'text-text',
+            )}
+          >
+            {item.name}
+          </span>
+          {(item.amount !== undefined || item.source === 'auto-restock') && (
+            <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-faint">
+              {item.amount !== undefined && (
+                <span className="tnum">
+                  {/* Shopping entries may carry an amount without a unit. */}
+                  {item.unit ? formatAmount(item.amount, item.unit) : item.amount}
+                </span>
+              )}
+              {item.source === 'auto-restock' && (
+                <span className="flex items-center gap-1 text-accent">
+                  <RefreshCw size={11} /> Nachkauf · Vorrat unter Minimum
+                </span>
+              )}
             </span>
           )}
-          {item.source === 'auto-restock' && (
-            <Badge tone="accent">
-              <RefreshCw size={10} className="mr-1" /> Auto
-            </Badge>
-          )}
-        </div>
-      </div>
+        </span>
+      </button>
       {item.checked && (
         <button
           type="button"
           onClick={onTakeover}
-          className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-accent active:bg-accent-soft"
+          className="mr-2 flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-accent active:bg-accent-soft"
         >
-          In Vorrat
+          <PackagePlus size={15} /> In Vorrat
         </button>
       )}
     </div>

@@ -2,13 +2,14 @@ import { useEffect } from 'react';
 import { useSettings } from './useSettings';
 
 /** Convert a hex colour to an "r g b" string for CSS variables. */
-function hexToRgbTriplet(hex: string): string | null {
+function hexToRgbTriplet(hex: string, lighten = 0): string | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
   const int = parseInt(m[1]!, 16);
-  const r = (int >> 16) & 255;
-  const g = (int >> 8) & 255;
-  const b = int & 255;
+  const mix = (c: number) => Math.round(c + (255 - c) * lighten);
+  const r = mix((int >> 16) & 255);
+  const g = mix((int >> 8) & 255);
+  const b = mix(int & 255);
   return `${r} ${g} ${b}`;
 }
 
@@ -40,10 +41,19 @@ export function useTheme(): void {
     return;
   }, [theme]);
 
+  // The accent is set inline on <html>, which beats the `.dark` rule in the
+  // stylesheet – so the dark variant has to be derived here. Lightening it
+  // keeps the green legible on the near-black ground (≥ 4.5:1).
   useEffect(() => {
-    const triplet = hexToRgbTriplet(accentColor);
-    if (triplet) {
-      document.documentElement.style.setProperty('--c-accent', triplet);
-    }
-  }, [accentColor]);
+    const root = document.documentElement;
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const dark = theme === 'dark' || (theme === 'system' && mql.matches);
+      const triplet = hexToRgbTriplet(accentColor, dark ? 0.45 : 0);
+      if (triplet) root.style.setProperty('--c-accent', triplet);
+    };
+    apply();
+    mql.addEventListener('change', apply);
+    return () => mql.removeEventListener('change', apply);
+  }, [accentColor, theme]);
 }

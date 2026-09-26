@@ -43,7 +43,7 @@ export function BarcodeEntry({
           // Numeric keypad on the iPad; type="text" keeps leading zeros.
           inputMode="numeric"
           autoComplete="off"
-          placeholder="Barcode eintippen, z. B. 4008400301457"
+          placeholder="EAN-Nummer eingeben"
           aria-label="Barcode eintippen"
         />
         <Button

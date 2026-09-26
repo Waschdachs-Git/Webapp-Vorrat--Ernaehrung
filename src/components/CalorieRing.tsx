@@ -53,14 +53,14 @@ export function CalorieRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="tnum text-[34px] font-semibold leading-none text-text">
+        <span className="tnum text-[30px] font-semibold leading-none text-text">
           {Math.abs(remaining)}
         </span>
         <span className="mt-1 text-[13px] text-muted">
           {over ? 'kcal über Ziel' : 'kcal übrig'}
         </span>
         <span className="tnum mt-0.5 text-[12px] text-faint">
-          {Math.round(consumed)} / {Math.round(goal)}
+          {Math.round(consumed)} von {Math.round(goal)} gegessen
         </span>
       </div>
     </div>

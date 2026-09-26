@@ -65,7 +65,7 @@ export function UndoToastProvider({
           <motion.div
             key={toast.id}
             // Sits just above the tab bar so it never covers the primary nav.
-            className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+68px)] z-40 flex justify-center px-5"
+            className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+68px)] md:bottom-6 md:left-[88px] lg:left-60 z-40 flex justify-center px-5"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}

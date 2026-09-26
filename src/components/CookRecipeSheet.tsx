@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input, SegmentedControl } from './ui';
-import { cookRecipe, defaultMealType } from '@/lib/actions';
+import { cookRecipe, defaultMealType, undoCook } from '@/lib/actions';
+import { useUndo } from './UndoToast';
 import type { MealType, OwnRecipe } from '@/db/types';
 
 const MEAL_OPTIONS: { value: MealType; label: string }[] = [
@@ -25,15 +26,15 @@ export function CookRecipeSheet({
   const [meal, setMeal] = useState<MealType>(defaultMealType());
   const [servings, setServings] = useState('1');
   const [saving, setSaving] = useState(false);
+  const showUndo = useUndo();
 
   const cook = async () => {
     if (!recipe) return;
     setSaving(true);
-    await cookRecipe({
-      recipe,
-      mealType: meal,
-      servingsCooked: parseFloat(servings) || 1,
-    });
+    const n = parseFloat(servings) || 1;
+    const result = await cookRecipe({ recipe, mealType: meal, servingsCooked: n });
+    const kcal = Math.round((recipe.nutritionPerServing?.kcal ?? 0) * n);
+    showUndo(`${recipe.title} gebucht · ${kcal} kcal`, () => undoCook(result));
     setSaving(false);
     onClose();
   };

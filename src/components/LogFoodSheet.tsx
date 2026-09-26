@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, Package, Apple, Pencil, ScanLine } from 'lucide-react';
+import { Search, Package, Apple, Pencil, ScanLine, ChevronRight, ChevronDown } from 'lucide-react';
 import { db } from '@/db/database';
 import { BottomSheet } from './BottomSheet';
 import { LazyBarcodeScanner } from './LazyBarcodeScanner';
@@ -8,14 +8,15 @@ import {
   Button,
   Field,
   Input,
-  SegmentedControl,
   cx,
 } from './ui';
 import { scaleNutriments } from '@/lib/nutrition';
 import { lookupBarcode } from '@/lib/openfoodfacts';
-import { diaryItemFromPer100, logFood } from '@/lib/actions';
-import type { MealType, Nutriments, Unit } from '@/db/types';
-import { formatAmount, unitLabel } from '@/lib/format';
+import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
+import type { InventoryItem, MealType, Nutriments, Unit } from '@/db/types';
+import { useUndo } from './UndoToast';
+import { formatAmount, relativeBestBefore, unitLabel } from '@/lib/format';
+import { daysUntil } from '@/lib/date';
 
 type Source = 'inventory' | 'foods' | 'free' | 'scan';
 
@@ -43,15 +44,29 @@ export function LogFoodSheet({
   open,
   onClose,
   defaultMeal,
+  preset,
 }: {
   open: boolean;
   onClose: () => void;
   defaultMeal: MealType;
+  /** Jump straight to the portion step for this stock item. */
+  preset?: InventoryItem;
 }): ReactNode {
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [source, setSource] = useState<Source>('inventory');
   const [query, setQuery] = useState('');
-  const [picked, setPicked] = useState<Picked | null>(null);
+  const [picked, setPicked] = useState<Picked | null>(() =>
+    preset?.nutrimentsPer100
+      ? {
+          name: preset.name,
+          unit: preset.unit,
+          per100: preset.nutrimentsPer100,
+          sourceType: 'inventory',
+          refId: preset.id,
+          gramsPerPiece: preset.gramsPerPiece,
+        }
+      : null,
+  );
 
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const foods = useLiveQuery(() => db.foodsLocal.toArray(), []);
@@ -68,11 +83,16 @@ export function LogFoodSheet({
     onClose();
   };
 
+  // Soonest best-before first: what should be eaten next is on top.
   const inventoryWithNutrition = useMemo(
     () =>
-      (inventory ?? []).filter(
-        (i) => i.nutrimentsPer100 && i.amount > 0 && match(i.name, query),
-      ),
+      (inventory ?? [])
+        .filter((i) => i.nutrimentsPer100 && i.amount > 0 && match(i.name, query))
+        .sort((a, b) => {
+          const da = a.bestBefore ? daysUntil(a.bestBefore) : Infinity;
+          const dbb = b.bestBefore ? daysUntil(b.bestBefore) : Infinity;
+          return da - dbb || a.name.localeCompare(b.name, 'de');
+        }),
     [inventory, query],
   );
   const filteredFoods = useMemo(
@@ -97,17 +117,13 @@ export function LogFoodSheet({
   return (
     <BottomSheet open={open} onClose={close} title="Essen loggen">
       <div className="flex flex-col gap-4">
-        <SegmentedControl
-          value={meal}
-          onChange={setMeal}
-          options={MEAL_OPTIONS}
-        />
+        <MealChip value={meal} onChange={setMeal} />
 
         <div className="flex gap-1 rounded-xl bg-surface-2 p-1">
           <SourceTab icon={<Package size={16} />} label="Vorrat" active={source === 'inventory'} onClick={() => setSource('inventory')} />
-          <SourceTab icon={<Apple size={16} />} label="Standard" active={source === 'foods'} onClick={() => setSource('foods')} />
+          <SourceTab icon={<Apple size={16} />} label="Lebensmittel" active={source === 'foods'} onClick={() => setSource('foods')} />
           <SourceTab icon={<ScanLine size={16} />} label="Scan" active={source === 'scan'} onClick={() => setSource('scan')} />
-          <SourceTab icon={<Pencil size={16} />} label="Frei" active={source === 'free'} onClick={() => setSource('free')} />
+          <SourceTab icon={<Pencil size={16} />} label="Manuell" active={source === 'free'} onClick={() => setSource('free')} />
         </div>
 
         {source === 'scan' ? (
@@ -128,25 +144,36 @@ export function LogFoodSheet({
                 className="pl-10"
               />
             </div>
-            <div className="flex max-h-[44vh] flex-col gap-1 overflow-y-auto">
+            <div className="flex max-h-[44vh] flex-col overflow-y-auto">
               {source === 'inventory'
-                ? inventoryWithNutrition.map((i) => (
-                    <PickRow
-                      key={i.id}
-                      title={i.name}
-                      sub={`${formatAmount(i.amount, i.unit)} im Vorrat${i.brand ? ` · ${i.brand}` : ''}`}
-                      onClick={() =>
-                        setPicked({
-                          name: i.name,
-                          unit: i.unit,
-                          per100: i.nutrimentsPer100!,
-                          sourceType: 'inventory',
-                          refId: i.id,
-                          gramsPerPiece: i.gramsPerPiece,
-                        })
-                      }
-                    />
-                  ))
+                ? inventoryWithNutrition.map((i) => {
+                    const days = i.bestBefore ? daysUntil(i.bestBefore) : null;
+                    return (
+                      <PickRow
+                        key={i.id}
+                        title={i.name}
+                        sub={`${formatAmount(i.amount, i.unit)} da · ${Math.round(i.nutrimentsPer100!.kcal)} kcal/100 ${i.unit === 'ml' ? 'ml' : 'g'}`}
+                        status={
+                          days === null || days > 3
+                            ? undefined
+                            : {
+                                text: relativeBestBefore(i.bestBefore!),
+                                tone: days < 0 ? 'danger' : 'warn',
+                              }
+                        }
+                        onClick={() =>
+                          setPicked({
+                            name: i.name,
+                            unit: i.unit,
+                            per100: i.nutrimentsPer100!,
+                            sourceType: 'inventory',
+                            refId: i.id,
+                            gramsPerPiece: i.gramsPerPiece,
+                          })
+                        }
+                      />
+                    );
+                  })
                 : filteredFoods.map((f) => (
                     <PickRow
                       key={f.id}
@@ -209,22 +236,32 @@ function SourceTab({
 function PickRow({
   title,
   sub,
+  status,
   onClick,
 }: {
   title: string;
   sub: string;
+  status?: { text: string; tone: 'warn' | 'danger' };
   onClick: () => void;
 }): ReactNode {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left active:bg-surface-2"
+      className="flex min-h-[56px] w-full items-center gap-3 border-b border-border px-1 py-2.5 text-left last:border-b-0 active:bg-surface-2"
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium text-text">{title}</p>
-        <p className="truncate text-[12px] text-faint">{sub}</p>
+        <p className="tnum truncate text-[12.5px] text-faint">
+          {status && (
+            <span className={status.tone === 'danger' ? 'text-danger' : 'text-warn'}>
+              {status.text} ·{' '}
+            </span>
+          )}
+          {sub}
+        </p>
       </div>
+      <ChevronRight size={18} className="shrink-0 text-faint" />
     </button>
   );
 }
@@ -249,6 +286,7 @@ function PortionStep({
     picked.gramsPerPiece ?? DEFAULT_GRAMS_PER_PIECE,
   );
   const [saving, setSaving] = useState(false);
+  const showUndo = useUndo();
 
   // Nutriments are per 100 g, so pieces have to be converted to grams first.
   const nutritionGrams = isPcs ? amount * gramsPerPiece : amount;
@@ -262,7 +300,7 @@ function PortionStep({
         await db.inventory.update(picked.refId, { gramsPerPiece });
       }
     }
-    await logFood({
+    const entryId = await logFood({
       mealType: meal,
       item: diaryItemFromPer100({
         name: picked.name,
@@ -274,12 +312,16 @@ function PortionStep({
         nutritionAmount: nutritionGrams,
       }),
     });
+    // Confirmation doubles as a safety net against mis-taps.
+    showUndo(`${picked.name} gebucht · ${Math.round(scaled.kcal)} kcal`, () =>
+      deleteDiaryItem(entryId, 0),
+    );
     onDone();
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <SegmentedControl value={meal} onChange={setMeal} options={MEAL_OPTIONS} />
+      <MealChip value={meal} onChange={setMeal} />
 
       <Field label={`Menge (${unitLabel(picked.unit)})`}>
         <Input
@@ -325,7 +367,7 @@ function PortionStep({
       <div className="grid grid-cols-4 gap-2 rounded-2xl bg-surface-2 p-3 text-center">
         <Stat label="kcal" value={Math.round(scaled.kcal)} />
         <Stat label="Protein" value={`${scaled.protein} g`} />
-        <Stat label="Carbs" value={`${scaled.carbs} g`} />
+        <Stat label="Kohlenh." value={`${scaled.carbs} g`} />
         <Stat label="Fett" value={`${scaled.fat} g`} />
       </div>
 
@@ -374,7 +416,7 @@ function FreePick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
       <p className="text-[12px] text-faint">Nährwerte pro 100 g/ml</p>
       <div className="grid grid-cols-2 gap-3">
         {(['kcal', 'protein', 'carbs', 'fat'] as const).map((k) => (
-          <Field key={k} label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Carbs (g)' : 'Fett (g)'}>
+          <Field key={k} label={k === 'kcal' ? 'kcal' : k === 'protein' ? 'Protein (g)' : k === 'carbs' ? 'Kohlenhydrate (g)' : 'Fett (g)'}>
             <Input
               type="number"
               inputMode="decimal"
@@ -456,4 +498,41 @@ function ScanPick({
 
 function match(name: string, query: string): boolean {
   return name.toLowerCase().includes(query.trim().toLowerCase());
+}
+
+/**
+ * Which meal this goes to. A compact chip rather than a second segmented
+ * control: stacked equal-weight bars read as two navigation levels.
+ */
+function MealChip({
+  value,
+  onChange,
+}: {
+  value: MealType;
+  onChange: (m: MealType) => void;
+}): ReactNode {
+  return (
+    <label className="flex items-center gap-2 text-[14px] text-muted">
+      Für
+      <span className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as MealType)}
+          aria-label="Mahlzeit"
+          className="min-h-[36px] appearance-none rounded-full bg-accent-soft py-1 pl-3.5 pr-8 text-[14px] font-medium text-accent outline-none"
+        >
+          {MEAL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={16}
+          aria-hidden
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-accent"
+        />
+      </span>
+    </label>
+  );
 }

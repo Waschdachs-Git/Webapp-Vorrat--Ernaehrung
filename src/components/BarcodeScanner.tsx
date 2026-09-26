@@ -41,13 +41,7 @@ export function BarcodeScanner({
         controls = c;
         if (cancelled) c.stop();
       })
-      .catch((err: unknown) => {
-        setError(
-          err instanceof Error
-            ? 'Kamera nicht verfügbar. Auf dem iPad ist HTTPS nötig.'
-            : 'Kamera konnte nicht gestartet werden.',
-        );
-      });
+      .catch((err: unknown) => setError(cameraErrorText(err)));
 
     return () => {
       cancelled = true;
@@ -83,4 +77,21 @@ export function BarcodeScanner({
       </p>
     </div>
   );
+}
+
+/** Tell the user what actually went wrong – the fix differs per cause. */
+function cameraErrorText(err: unknown): string {
+  const name = err instanceof Error ? err.name : '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return window.isSecureContext
+      ? 'Kamerazugriff verweigert. In den Safari-Einstellungen für diese Seite erlauben – oder den Barcode unten eintippen.'
+      : 'Die Kamera braucht eine sichere Verbindung (HTTPS). Barcode bitte unten eintippen.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'Keine Kamera gefunden. Barcode bitte unten eintippen.';
+  }
+  if (name === 'NotReadableError') {
+    return 'Die Kamera wird gerade von einer anderen App genutzt.';
+  }
+  return 'Kamera konnte nicht gestartet werden. Barcode bitte unten eintippen.';
 }

@@ -1,10 +1,8 @@
 import { type ReactNode, Suspense, lazy, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Pencil,
   Settings as SettingsIcon,
   Plus,
-  TrendingUp,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { db, PROFILE_ID } from '@/db/database';
@@ -25,7 +23,7 @@ import {
   effectiveTargets,
   tdee,
 } from '@/lib/health';
-import { ageFromBirthdate, formatDay, todayISO } from '@/lib/date';
+import { ageFromBirthdate, todayISO } from '@/lib/date';
 import type { Targets } from '@/db/types';
 
 // Recharts is only needed once there are at least two weight entries.
@@ -85,10 +83,29 @@ export function Profile(): ReactNode {
     setNewWeight('');
   };
 
-  const chartData = (weights ?? []).map((w) => ({
-    date: w.date.slice(5), // MM-DD
-    kg: w.weightKg,
-  }));
+  const chartData = (weights ?? []).map((w) => {
+    const [, m, d] = w.date.split('-');
+    return { date: `${Number(d)}.${Number(m)}.`, kg: w.weightKg };
+  });
+
+  // Trend over the last ~30 days, compared against the oldest entry in range.
+  const trend = (() => {
+    const list = weights ?? [];
+    if (list.length < 2) return null;
+    const latest = list[list.length - 1]!;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cut = cutoff.toISOString().slice(0, 10);
+    const base = list.find((w) => w.date >= cut) ?? list[0]!;
+    if (base === latest) return null;
+    const days = Math.max(
+      1,
+      Math.round(
+        (new Date(latest.date).getTime() - new Date(base.date).getTime()) / 86_400_000,
+      ),
+    );
+    return { latest: latest.weightKg, delta: latest.weightKg - base.weightKg, days };
+  })();
 
   return (
     <div className="pb-24">
@@ -108,16 +125,19 @@ export function Profile(): ReactNode {
       <div className="flex flex-col gap-5 px-5">
         {/* Identity + key facts */}
         <Card>
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[20px] font-semibold text-text">{profile.name}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[20px] font-semibold text-text">{profile.name}</p>
               <p className="mt-0.5 text-[13px] text-muted">
                 {age} Jahre · {profile.heightCm} cm · {GOAL_LABELS[profile.goal]}
               </p>
             </div>
-            <Button variant="secondary" onClick={openEdit} className="h-9 px-3">
-              <Pencil size={16} /> Bearbeiten
-            </Button>
+            <button
+              onClick={openEdit}
+              className="-mr-1 min-h-[40px] shrink-0 px-1 text-[14px] font-medium text-accent active:opacity-60"
+            >
+              Bearbeiten
+            </button>
           </div>
           <div className="mt-3 text-[13px] text-faint">
             {ACTIVITY_LABELS[profile.activityLevel]} · Erhaltungsbedarf ca.{' '}
@@ -131,15 +151,15 @@ export function Profile(): ReactNode {
             <h2 className="text-[15px] font-semibold text-text">Tagesziele</h2>
             <button
               onClick={() => setTargetsOpen(true)}
-              className="text-[13px] font-medium text-accent active:opacity-60"
+              className="min-h-[40px] px-1 text-[14px] font-medium text-accent active:opacity-60"
             >
-              Anpassen
+              Bearbeiten
             </button>
           </div>
           <div className="grid grid-cols-4 gap-2 text-center">
             <TargetStat label="kcal" value={targets.kcal} />
             <TargetStat label="Protein" value={`${targets.protein} g`} />
-            <TargetStat label="Carbs" value={`${targets.carbs} g`} />
+            <TargetStat label="Kohlenh." value={`${targets.carbs} g`} />
             <TargetStat label="Fett" value={`${targets.fat} g`} />
           </div>
           {JSON.stringify(targets) !== JSON.stringify(calculated) && (
@@ -152,9 +172,29 @@ export function Profile(): ReactNode {
         {/* Weight log + chart */}
         <Card>
           <div className="mb-3 flex items-center gap-1.5">
-            <TrendingUp size={18} className="text-muted" />
             <h2 className="text-[15px] font-semibold text-text">Gewichtsverlauf</h2>
           </div>
+
+          {trend && (
+            <div className="mb-4 flex items-baseline gap-3">
+              <span className="tnum text-[28px] font-semibold leading-none text-text">
+                {trend.latest.toLocaleString('de-DE')}
+                <span className="ml-1 text-[15px] font-medium text-muted">kg</span>
+              </span>
+              <span
+                className={`tnum text-[13px] font-medium ${
+                  (profile.goal === 'lose' && trend.delta < 0) ||
+                  (profile.goal === 'gain' && trend.delta > 0)
+                    ? 'text-accent'
+                    : 'text-muted'
+                }`}
+              >
+                {trend.delta > 0 ? '+' : trend.delta < 0 ? '−' : '±'}
+                {Math.abs(trend.delta).toLocaleString('de-DE', { maximumFractionDigits: 1 })} kg
+                in {trend.days} Tagen
+              </span>
+            </div>
+          )}
 
           <div className="mb-3 flex gap-2">
             <Input
@@ -187,15 +227,35 @@ export function Profile(): ReactNode {
               {[...(weights ?? [])]
                 .reverse()
                 .slice(0, 5)
-                .map((w) => (
-                  <div
-                    key={w.id}
-                    className="flex items-center justify-between text-[13px]"
-                  >
-                    <span className="text-muted">{formatDay(w.date)}</span>
-                    <span className="tnum font-medium text-text">{w.weightKg} kg</span>
-                  </div>
-                ))}
+                .map((w, i, arr) => {
+                  const prev = arr[i + 1];
+                  const diff = prev ? w.weightKg - prev.weightKg : 0;
+                  return (
+                    <div
+                      key={w.id}
+                      className="flex items-center justify-between text-[13px]"
+                    >
+                      <span className="text-muted">
+                        {new Date(w.date + 'T00:00:00').toLocaleDateString('de-DE', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'numeric',
+                        })}
+                      </span>
+                      <span className="tnum flex items-baseline gap-3">
+                        {prev && Math.abs(diff) >= 0.05 && (
+                          <span className="text-[12px] text-faint">
+                            {diff > 0 ? '+' : '−'}
+                            {Math.abs(diff).toLocaleString('de-DE', { maximumFractionDigits: 1 })}
+                          </span>
+                        )}
+                        <span className="font-medium text-text">
+                          {w.weightKg.toLocaleString('de-DE')} kg
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </Card>
@@ -213,6 +273,7 @@ export function Profile(): ReactNode {
             setDraft={setDraft}
             onSubmit={saveEdit}
             submitLabel="Speichern"
+            inSheet
           />
         )}
       </BottomSheet>
@@ -295,7 +356,7 @@ function TargetsSheet({
               onChange={(e) => setVals({ ...vals, protein: e.target.value })}
             />
           </Field>
-          <Field label="Carbs (g)">
+          <Field label="Kohlenhydrate (g)">
             <Input
               type="number"
               value={vals.carbs}

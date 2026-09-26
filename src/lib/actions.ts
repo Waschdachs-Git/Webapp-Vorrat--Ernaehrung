@@ -25,7 +25,7 @@ export function defaultMealType(d = new Date()): MealType {
 }
 
 /** Append a diary entry from a list of items. */
-async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<void> {
+async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<number> {
   const totals = items.reduce<Nutriments>(
     (acc, i) =>
       addNutriments(acc, {
@@ -42,7 +42,7 @@ async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<void> 
     items,
     totals,
   };
-  await db.diary.add(entry);
+  return db.diary.add(entry);
 }
 
 /**
@@ -52,12 +52,13 @@ async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<void> 
 export async function logFood(args: {
   mealType: MealType;
   item: DiaryItem;
-}): Promise<void> {
-  await bookDiary(args.mealType, [args.item]);
+}): Promise<number> {
+  const entryId = await bookDiary(args.mealType, [args.item]);
   if (args.item.sourceType === 'inventory' && args.item.refId !== undefined) {
     await subtractInventory(args.item.refId, args.item.amount);
   }
   await runAutoRestock();
+  return entryId;
 }
 
 /**
@@ -68,8 +69,9 @@ export async function cookRecipe(args: {
   mealType: MealType;
   recipe: OwnRecipe;
   servingsCooked: number;
-}): Promise<void> {
+}): Promise<CookResult> {
   const { recipe, servingsCooked, mealType } = args;
+  const subtracted: { id: number; amount: number }[] = [];
   const inventory = await db.inventory.toArray();
 
   // Subtract matched ingredients (scaled to the cooked portion of the recipe).
@@ -80,7 +82,10 @@ export async function cookRecipe(args: {
         inv.unit === ing.unit && namesMatch(inv.name, ing.name) && inv.amount > 0,
     );
     if (match?.id !== undefined) {
-      await subtractInventory(match.id, ing.amount * factor);
+      // Record what was actually taken so an undo can give exactly that back.
+      const take = Math.min(match.amount, ing.amount * factor);
+      await subtractInventory(match.id, take);
+      subtracted.push({ id: match.id, amount: take });
     }
   }
 
@@ -102,7 +107,20 @@ export async function cookRecipe(args: {
     sourceType: 'recipe',
     refId: recipe.id,
   };
-  await bookDiary(mealType, [item]);
+  const entryId = await bookDiary(mealType, [item]);
+  await runAutoRestock();
+  return { entryId, subtracted };
+}
+
+export interface CookResult {
+  entryId: number;
+  subtracted: { id: number; amount: number }[];
+}
+
+/** Reverse a cookRecipe call: drop the diary entry, return the ingredients. */
+export async function undoCook(result: CookResult): Promise<void> {
+  await db.diary.delete(result.entryId);
+  for (const s of result.subtracted) await restoreInventory(s.id, s.amount);
   await runAutoRestock();
 }
 
@@ -267,8 +285,8 @@ export async function updateDiaryItemAmount(
 export async function repeatDiaryItem(
   item: DiaryItem,
   mealType: MealType,
-): Promise<void> {
-  await logFood({ mealType, item: { ...item } });
+): Promise<number> {
+  return logFood({ mealType, item: { ...item } });
 }
 
 function namesMatch(a: string, b: string): boolean {

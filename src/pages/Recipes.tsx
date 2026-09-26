@@ -1,13 +1,13 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
   CookingPot,
   ChefHat,
-  Pencil,
   ExternalLink,
-  Info,
+  Globe,
 } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
@@ -16,7 +16,7 @@ import { CookRecipeSheet } from '@/components/CookRecipeSheet';
 import { BottomSheet } from '@/components/BottomSheet';
 import {
   Button,
-  Card,
+  AddButton,
   Badge,
   EmptyState,
   Input,
@@ -75,9 +75,7 @@ export function Recipes(): ReactNode {
       <PageHeader
         title="Rezepte"
         action={
-          <Button onClick={openNew} className="h-10 px-3">
-            <Plus size={18} /> Eigenes
-          </Button>
+          <AddButton label="Rezept" onClick={openNew} />
         }
       />
 
@@ -88,7 +86,7 @@ export function Recipes(): ReactNode {
           options={[
             { value: 'cook', label: 'Was kochen?' },
             { value: 'search', label: 'Suche' },
-            { value: 'own', label: 'Meine' },
+            { value: 'own', label: 'Meine Rezepte' },
           ]}
         />
 
@@ -186,23 +184,38 @@ function CookMode({
 
   return (
     <div className="flex flex-col gap-4">
-      <SegmentedControl
-        value={sort}
-        onChange={setSort}
-        options={[
-          { value: 'have', label: 'Nutzt, was ich habe' },
-          { value: 'expiring', label: 'Bald Ablaufendes' },
-        ]}
-      />
+      {/* Secondary sort as light chips – two stacked segmented controls
+          read as two equal navigation levels. */}
+      <div className="flex gap-2" role="group" aria-label="Sortierung">
+        {([
+          ['have', 'Meiste Zutaten da'],
+          ['expiring', 'Verwertet Ablaufendes'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={sort === value}
+            onClick={() => setSort(value)}
+            className={cx(
+              'min-h-[36px] rounded-full border px-3.5 text-[13px] font-medium transition-colors',
+              sort === value
+                ? 'border-text bg-text text-bg'
+                : 'border-border bg-surface text-muted',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {ranked.length === 0 ? (
         <EmptyState
           icon={<ChefHat size={26} />}
           title="Keine passenden eigenen Rezepte"
-          hint="Lege Rezepte an oder durchsuche Spoonacular nach deinem Vorrat."
+          hint="Lege eigene Rezepte an – sie erscheinen hier, sobald Zutaten im Vorrat sind."
         />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 md:grid-cols-2">
           {ranked.map(({ recipe, matchCount, total, expiringHit }) => (
             <OwnRecipeCard
               key={recipe.id}
@@ -211,8 +224,11 @@ function CookMode({
               onEdit={() => onEdit(recipe)}
               badge={
                 <>
-                  <Badge tone="accent">
-                    {matchCount}/{total} im Vorrat
+                  {/* Green only means "good": a gap is neutral, not positive. */}
+                  <Badge tone={matchCount === total ? 'accent' : 'neutral'}>
+                    {matchCount === total
+                      ? 'Alle Zutaten da'
+                      : `${total - matchCount} ${total - matchCount === 1 ? 'Zutat fehlt' : 'Zutaten fehlen'}`}
                   </Badge>
                   {expiringHit && <Badge tone="warn">nutzt Ablaufendes</Badge>}
                 </>
@@ -234,7 +250,7 @@ function CookMode({
             <Search size={16} />
             {spoonState === 'loading'
               ? 'Suche…'
-              : 'Spoonacular nach Vorrat fragen'}
+              : 'Online-Rezepte zu meinem Vorrat finden'}
           </Button>
           {typeof spoonState === 'string' && spoonState !== 'idle' && spoonState !== 'loading' && (
             <p className="mt-2 text-[13px] text-danger">{spoonState}</p>
@@ -359,38 +375,41 @@ function OwnRecipeCard({
   onEdit: () => void;
   badge?: ReactNode;
 }): ReactNode {
+  const n = recipe.nutritionPerServing;
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-[16px] font-medium text-text">{recipe.title}</p>
-          <p className="mt-0.5 text-[13px] text-muted">
-            {recipe.servings} Portionen · {recipe.ingredients.length} Zutaten
-            {recipe.nutritionPerServing
-              ? ` · ${Math.round(recipe.nutritionPerServing.kcal)} kcal/Portion`
-              : ''}
-          </p>
-          {(badge || recipe.tags.length > 0) && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {badge}
-              {recipe.tags.map((t) => (
-                <Badge key={t}>{t}</Badge>
-              ))}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={onEdit}
-          aria-label="Bearbeiten"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted active:bg-surface-2"
+    <div className="flex items-start overflow-hidden rounded-2xl border border-border bg-surface">
+      {/* Tapping the card body edits; cooking is its own, explicit action. */}
+      <button
+        type="button"
+        onClick={onEdit}
+        className="min-w-0 flex-1 px-4 py-3 text-left active:bg-surface-2"
+      >
+        <p className="truncate text-[16px] font-medium text-text">{recipe.title}</p>
+        <p className="tnum mt-0.5 text-[13px] text-muted" title="pro Portion">
+          {n
+            ? `${Math.round(n.kcal)} kcal · ${Math.round(n.protein)} g Protein`
+            : 'Keine Nährwerte hinterlegt'}
+        </p>
+        {(badge || recipe.tags.length > 0) && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {badge}
+            {recipe.tags.slice(0, 2).map((t) => (
+              <Badge key={t}>{t}</Badge>
+            ))}
+            {recipe.tags.length > 2 && <Badge>+{recipe.tags.length - 2}</Badge>}
+          </div>
+        )}
+      </button>
+      <div className="flex items-center pr-3 pt-3">
+        <Button
+          variant="secondary"
+          onClick={onCook}
+          className="h-10 gap-1.5 !bg-accent-soft !px-3 text-[14px] !text-accent"
         >
-          <Pencil size={17} />
-        </button>
+          <CookingPot size={15} /> Kochen
+        </Button>
       </div>
-      <Button block className="mt-3" onClick={onCook}>
-        Gekocht
-      </Button>
-    </Card>
+    </div>
   );
 }
 
@@ -403,20 +422,23 @@ function SpoonacularGate({
   hasKey: boolean;
   children: ReactNode;
 }): ReactNode {
+  const navigate = useNavigate();
   if (hasKey) return <>{children}</>;
   return (
-    <Card className="flex items-start gap-3 opacity-95">
-      <Info size={18} className="mt-0.5 shrink-0 text-muted" />
-      <div>
-        <p className="text-[14px] font-medium text-text">
-          Spoonacular nicht aktiv
-        </p>
-        <p className="text-[13px] text-muted">
-          Hinterlege einen kostenlosen API-Key in den Einstellungen, um Rezepte
-          zu suchen und nach deinem Vorrat zu finden.
-        </p>
-      </div>
-    </Card>
+    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-3">
+      <Globe size={18} className="shrink-0 text-faint" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug text-muted">
+        <span className="font-medium text-text">Online-Rezeptsuche</span>{' '}
+        findet Gerichte passend zu deinem Vorrat.
+      </p>
+      <Button
+        variant="secondary"
+        onClick={() => navigate('/einstellungen')}
+        className="h-9 shrink-0 px-3 text-[14px]"
+      >
+        Einrichten
+      </Button>
+    </div>
   );
 }
 
