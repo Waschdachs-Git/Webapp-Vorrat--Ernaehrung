@@ -1,11 +1,11 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, Package, X, LayoutList } from 'lucide-react';
+import { Search, Package, X, ChevronDown } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
 import { SwipeRow } from '@/components/SwipeRow';
-import { AddButton, EmptyState, Input, cx } from '@/components/ui';
+import { AddButton, EmptyState, Input, Section, TextTabs } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
 import { daysUntil } from '@/lib/date';
@@ -44,9 +44,6 @@ function urgencyOf(item: InventoryItem): Urgency {
   if (isLowStaple(item)) return 'low';
   return 'none';
 }
-
-/** Only a best-before within this window earns a line in the list. */
-const RELEVANT_DAYS = 14;
 
 const URGENCY_RANK: Record<Urgency, number> = {
   expired: 3,
@@ -171,19 +168,6 @@ export function Inventory(): ReactNode {
         action={
           <div className="flex items-center gap-1">
             <button
-              onClick={() =>
-                setGroupMode((m) => (m === 'location' ? 'category' : 'location'))
-              }
-              aria-label={
-                groupMode === 'location'
-                  ? 'Nach Kategorie gruppieren'
-                  : 'Nach Lagerort gruppieren'
-              }
-              className="flex h-10 w-10 items-center justify-center rounded-full text-muted active:bg-surface-2"
-            >
-              <LayoutList size={21} />
-            </button>
-            <button
               onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
               aria-label={searchOpen ? 'Suche schließen' : 'Suchen'}
               className="flex h-10 w-10 items-center justify-center rounded-full text-muted active:bg-surface-2"
@@ -206,83 +190,84 @@ export function Inventory(): ReactNode {
         </div>
       )}
 
-      {all.length > 0 && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-4">
-          <Chip
-            label="Alle"
-            count={all.length}
-            active={filter === 'all'}
-            onClick={() => setFilter('all')}
-          />
-          {counts.expired > 0 && (
-            <Chip
-              label="Abgelaufen"
-              count={counts.expired}
-              tone="danger"
-              active={filter === 'expired'}
-              onClick={() => setFilter('expired')}
-            />
-          )}
-          {counts.expiring > 0 && (
-            <Chip
-              label="Läuft ab"
-              count={counts.expiring}
-              tone="warn"
-              active={filter === 'expiring'}
-              onClick={() => setFilter('expiring')}
-            />
-          )}
-          {counts.low > 0 && (
-            <Chip
-              label="Wenig"
-              tone="low"
-              count={counts.low}
-              active={filter === 'low'}
-              onClick={() => setFilter('low')}
-            />
-          )}
-        </div>
-      )}
-
       <div className="px-5">
-        {all.length === 0 ? (
-          <EmptyState
-            icon={<Package size={28} />}
-            title="Dein Vorrat ist leer"
-            hint="Scanne einen Barcode oder füge Artikel manuell hinzu."
+        {all.length > 0 && (
+          <TextTabs
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'all', label: 'Alle', count: all.length },
+              ...(counts.expired > 0
+                ? [{ value: 'expired' as Filter, label: 'Abgelaufen', count: counts.expired, tone: 'danger' as const }]
+                : []),
+              ...(counts.expiring > 0
+                ? [{ value: 'expiring' as Filter, label: 'Läuft ab', count: counts.expiring, tone: 'warn' as const }]
+                : []),
+              ...(counts.low > 0
+                ? [{ value: 'low' as Filter, label: 'Wenig', count: counts.low }]
+                : []),
+            ]}
+            trailing={
+              <label className="relative flex items-center">
+                <span className="sr-only">Ordnen nach</span>
+                <select
+                  value={groupMode}
+                  onChange={(e) => setGroupMode(e.target.value as GroupMode)}
+                  className="min-h-[44px] appearance-none bg-transparent pr-5 text-[14px] font-medium text-muted outline-none"
+                >
+                  <option value="location">Nach Ort</option>
+                  <option value="category">Nach Art</option>
+                </select>
+                <ChevronDown
+                  size={14}
+                  aria-hidden
+                  className="pointer-events-none absolute right-0 text-muted"
+                />
+              </label>
+            }
           />
-        ) : visible.length === 0 ? (
-          <EmptyState
-            title="Nichts gefunden"
-            hint="Andere Suche oder anderen Filter probieren."
-          />
-        ) : (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 md:items-start">
-            {groups.map((group) => (
-              <section key={group.key}>
-                {/* One bordered container per group; the group label lives
-                    inside it, the same way meals and shopping categories do. */}
-                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-                  <h2 className="flex items-baseline gap-2 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-faint">
-                    {group.label}
-                    <span className="tnum font-medium normal-case tracking-normal">
+        )}
+
+        <div className="mt-6">
+          {all.length === 0 ? (
+            <EmptyState
+              icon={<Package size={28} />}
+              title="Dein Vorrat ist leer"
+              hint="Scanne einen Barcode oder füge Artikel manuell hinzu."
+            />
+          ) : visible.length === 0 ? (
+            <EmptyState
+              title="Nichts gefunden"
+              hint="Andere Suche oder anderen Filter probieren."
+            />
+          ) : (
+            // Masonry via CSS columns keeps two iPad columns balanced.
+            <div className="md:columns-2 md:gap-10">
+              {groups.map((group) => (
+                <Section
+                  key={group.key}
+                  title={group.label}
+                  className="mb-9 break-inside-avoid"
+                  action={
+                    <span className="tnum text-[13px] text-faint">
                       {group.items.length}
                     </span>
-                  </h2>
-                  {group.items.map((item, idx) => (
-                    <SwipeRow
-                      key={item.id}
-                      className={idx > 0 ? 'border-t border-border' : ''}
-                      onSwipeLeft={() => removeItem(item)}
-                    >
-                      <InventoryRow item={item} onClick={() => openEdit(item)} />
-                    </SwipeRow>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
+                  }
+                >
+                  <ul>
+                    {group.items.map((item) => (
+                      <li key={item.id} className="border-b border-border last:border-b-0">
+                        <SwipeRow className="" onSwipeLeft={() => removeItem(item)}>
+                          <InventoryRow item={item} onClick={() => openEdit(item)} />
+                        </SwipeRow>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <AddInventorySheet
@@ -296,45 +281,6 @@ export function Inventory(): ReactNode {
   );
 }
 
-function Chip({
-  label,
-  count,
-  active,
-  tone,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  tone?: 'warn' | 'danger' | 'low';
-  onClick: () => void;
-}): ReactNode {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cx(
-        'flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-medium transition-colors',
-        active
-          ? 'border-text bg-text text-bg'
-          : 'border-border bg-surface text-muted',
-      )}
-    >
-      {tone && !active && (
-        <span
-          className={cx(
-            'h-[7px] w-[7px] rounded-full',
-            tone === 'danger' ? 'bg-danger' : tone === 'low' ? 'bg-protein' : 'bg-warn',
-          )}
-        />
-      )}
-      {label}
-      <span className="tnum opacity-60">{count}</span>
-    </button>
-  );
-}
-
 function InventoryRow({
   item,
   onClick,
@@ -344,61 +290,36 @@ function InventoryRow({
 }): ReactNode {
   const urgency = urgencyOf(item);
   const low = isLowStaple(item);
-
-  // One status line, and only when it is actionable: a best-before three
-  // weeks out tells you nothing while cooking, it just adds a second line to
-  // every row. The exact date stays in the detail view.
   const days = item.bestBefore ? daysUntil(item.bestBefore) : null;
-  const parts: string[] = [];
-  if (item.bestBefore && days !== null && days <= RELEVANT_DAYS) {
-    parts.push(relativeBestBefore(item.bestBefore));
-  }
-  if (low && item.minStock !== undefined) {
-    parts.push(`Fast leer · unter ${formatAmount(item.minStock, item.unit)}`);
-  }
-  const status = parts.join(' · ');
+
+  // The second line always answers the same question – how long does it
+  // keep? – and appends stock only when it is running low.
+  const keeps = item.bestBefore
+    ? days !== null && days > 60
+      ? `MHD ${new Date(item.bestBefore + 'T00:00:00').toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })}`
+      : relativeBestBefore(item.bestBefore)
+    : 'Ohne MHD';
+  const tone =
+    urgency === 'expired' ? 'text-danger' : urgency === 'soon' ? 'text-warn' : 'text-faint';
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[52px] w-full items-center gap-3 bg-surface px-4 py-2.5 text-left active:bg-surface-2"
+      className="flex min-h-[60px] w-full items-center gap-3 bg-bg py-2.5 text-left active:bg-surface-2"
     >
-      <span
-        aria-hidden
-        className={cx(
-          'h-[7px] w-[7px] shrink-0 rounded-full',
-          urgency === 'expired'
-            ? 'bg-danger'
-            : urgency === 'soon'
-              ? 'bg-warn'
-              : urgency === 'low'
-                ? 'bg-protein'
-                : 'bg-transparent',
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-medium text-text">
-          {item.name}
-        </p>
-        {status && (
-          <p
-            className={cx(
-              'truncate text-[12.5px]',
-              urgency === 'expired'
-                ? 'text-danger'
-                : urgency === 'soon'
-                  ? 'text-warn'
-                  : urgency === 'low'
-                    ? 'text-protein'
-                    : 'text-faint',
-            )}
-          >
-            {status}
-          </p>
-        )}
-      </div>
-      <span className="tnum shrink-0 text-[15px] font-medium text-muted">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[16px] text-text">{item.name}</span>
+        <span className="tnum block truncate text-[13px]">
+          <span className={tone}>{keeps}</span>
+          {low && item.minStock !== undefined && (
+            <span className="text-protein">
+              {' '}· fast leer (unter {formatAmount(item.minStock, item.unit)})
+            </span>
+          )}
+        </span>
+      </span>
+      <span className="tnum shrink-0 text-[15px] text-muted">
         {formatAmount(item.amount, item.unit)}
       </span>
     </button>

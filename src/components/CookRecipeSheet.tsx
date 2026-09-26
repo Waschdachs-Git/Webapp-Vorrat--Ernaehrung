@@ -3,6 +3,7 @@ import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input, SegmentedControl } from './ui';
 import { cookRecipe, defaultMealType, undoCook } from '@/lib/actions';
 import { useUndo } from './UndoToast';
+import { formatAmount } from '@/lib/format';
 import type { MealType, OwnRecipe } from '@/db/types';
 
 const MEAL_OPTIONS: { value: MealType; label: string }[] = [
@@ -19,9 +20,12 @@ const MEAL_OPTIONS: { value: MealType; label: string }[] = [
 export function CookRecipeSheet({
   recipe,
   onClose,
+  onEdit,
 }: {
   recipe: OwnRecipe | null;
   onClose: () => void;
+  /** When given, the sheet doubles as the recipe's detail view. */
+  onEdit?: (r: OwnRecipe) => void;
 }): ReactNode {
   const [meal, setMeal] = useState<MealType>(defaultMealType());
   const [servings, setServings] = useState('1');
@@ -43,9 +47,24 @@ export function CookRecipeSheet({
     <BottomSheet
       open={!!recipe}
       onClose={onClose}
-      title={recipe ? `„${recipe.title}“ kochen` : ''}
+      title={recipe?.title ?? ''}
     >
       <div className="flex flex-col gap-4">
+        {recipe && recipe.ingredients.length > 0 && (
+          <div>
+            <p className="mb-1 text-[13px] font-semibold text-muted">
+              Zutaten für {recipe.servings} {recipe.servings === 1 ? 'Portion' : 'Portionen'}
+            </p>
+            <ul className="text-[15px] text-text">
+              {recipe.ingredients.map((ing, i) => (
+                <li key={i} className="flex justify-between border-b border-border py-1.5 last:border-b-0">
+                  <span>{ing.name}</span>
+                  <span className="tnum text-muted">{formatAmount(ing.amount, ing.unit)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <SegmentedControl value={meal} onChange={setMeal} options={MEAL_OPTIONS} />
         <Field
           label="Portionen"
@@ -72,6 +91,15 @@ export function CookRecipeSheet({
         <Button block onClick={cook} disabled={saving}>
           Gekocht &amp; buchen
         </Button>
+        {recipe && onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(recipe)}
+            className="min-h-[40px] text-[15px] font-medium text-accent active:opacity-60"
+          >
+            Rezept bearbeiten
+          </button>
+        )}
       </div>
     </BottomSheet>
   );

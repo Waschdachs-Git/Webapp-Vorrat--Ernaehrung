@@ -29,7 +29,7 @@ export function useTheme(): void {
       root.classList.toggle('dark', dark);
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
-        meta.setAttribute('content', dark ? '#121210' : '#faf8f4');
+        meta.setAttribute('content', dark ? '#10100f' : '#f4f3ef');
       }
     };
 

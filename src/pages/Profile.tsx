@@ -15,7 +15,7 @@ import {
   draftToProfile,
   type ProfileDraft,
 } from '@/components/ProfileForm';
-import { Button, Card, Field, Input, EmptyState } from '@/components/ui';
+import { Button, Field, Input, EmptyState } from '@/components/ui';
 import {
   ACTIVITY_LABELS,
   GOAL_LABELS,
@@ -122,57 +122,61 @@ export function Profile(): ReactNode {
         }
       />
 
-      <div className="flex flex-col gap-5 px-5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-9 px-5 md:grid-cols-2 md:items-start md:gap-10">
+        {/* iPad: identity and targets left, weight right. */}
+        <div className="flex flex-col gap-9">
         {/* Identity + key facts */}
-        <Card>
+        <section>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-[20px] font-semibold text-text">{profile.name}</p>
+              <p className="truncate font-serif text-[26px] font-semibold tracking-[-0.01em] text-text">{profile.name}</p>
               <p className="mt-0.5 text-[13px] text-muted">
                 {age} Jahre · {profile.heightCm} cm · {GOAL_LABELS[profile.goal]}
               </p>
             </div>
             <button
               onClick={openEdit}
-              className="-mr-1 min-h-[40px] shrink-0 px-1 text-[14px] font-medium text-accent active:opacity-60"
+              className="min-h-[40px] shrink-0 text-[15px] font-medium text-accent active:opacity-60"
             >
               Bearbeiten
             </button>
           </div>
           <div className="mt-3 text-[13px] text-faint">
             {ACTIVITY_LABELS[profile.activityLevel]} · Erhaltungsbedarf ca.{' '}
-            <span className="tnum">{Math.round(tdee(profile))}</span> kcal
+            <span className="tnum whitespace-nowrap">{Math.round(tdee(profile)).toLocaleString('de-DE')}{'\u00a0'}kcal</span>
           </div>
-        </Card>
+        </section>
 
         {/* Targets */}
-        <Card>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-text">Tagesziele</h2>
+        <section>
+          <div className="mb-3 flex items-baseline justify-between border-b border-text/80 dark:border-text/35 pb-2">
+            <h2 className="font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Tagesziele</h2>
             <button
               onClick={() => setTargetsOpen(true)}
-              className="min-h-[40px] px-1 text-[14px] font-medium text-accent active:opacity-60"
+              className="min-h-[40px] shrink-0 text-[15px] font-medium text-accent active:opacity-60"
             >
               Bearbeiten
             </button>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center">
-            <TargetStat label="kcal" value={targets.kcal} />
-            <TargetStat label="Protein" value={`${targets.protein} g`} />
-            <TargetStat label="Kohlenh." value={`${targets.carbs} g`} />
-            <TargetStat label="Fett" value={`${targets.fat} g`} />
+          <div className="grid grid-cols-4 gap-2">
+            <TargetStat label="kcal" value={targets.kcal.toLocaleString('de-DE')} />
+            <TargetStat label="Protein" value={`${targets.protein}\u00a0g`} />
+            <TargetStat label="Kohlenh." value={`${targets.carbs}\u00a0g`} />
+            <TargetStat label="Fett" value={`${targets.fat}\u00a0g`} />
           </div>
           {JSON.stringify(targets) !== JSON.stringify(calculated) && (
             <p className="mt-3 text-[12px] text-faint">
               Manuell angepasst (berechnet: {calculated.kcal} kcal).
             </p>
           )}
-        </Card>
+        </section>
+
+        </div>
 
         {/* Weight log + chart */}
-        <Card>
-          <div className="mb-3 flex items-center gap-1.5">
-            <h2 className="text-[15px] font-semibold text-text">Gewichtsverlauf</h2>
+        <section>
+          <div className="mb-4 flex items-center gap-1.5 border-b border-text/80 dark:border-text/35 pb-2">
+            <h2 className="font-serif text-[21px] font-semibold tracking-[-0.01em] text-text">Gewichtsverlauf</h2>
           </div>
 
           {trend && (
@@ -258,9 +262,9 @@ export function Profile(): ReactNode {
                 })}
             </div>
           )}
-        </Card>
+        </section>
 
-        <p className="px-1 pb-2 text-center text-[12px] text-faint">
+        <p className="pb-2 text-center text-[12px] text-faint md:col-span-2">
           Alle Werte sind Schätzungen zur Orientierung, keine medizinische
           Beratung.
         </p>
@@ -293,8 +297,8 @@ export function Profile(): ReactNode {
 function TargetStat({ label, value }: { label: string; value: ReactNode }): ReactNode {
   return (
     <div>
-      <p className="tnum text-[18px] font-semibold text-text">{value}</p>
-      <p className="text-[11px] text-faint">{label}</p>
+      <p className="tnum font-serif text-[26px] font-medium leading-tight text-text">{value}</p>
+      <p className="text-[12.5px] text-muted">{label}</p>
     </div>
   );
 }

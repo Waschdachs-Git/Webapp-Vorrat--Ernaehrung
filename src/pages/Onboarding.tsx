@@ -24,10 +24,10 @@ export function Onboarding({ onDone }: { onDone: () => void }): ReactNode {
   return (
     <div className="mx-auto min-h-full max-w-lg px-6 pb-16 pt-[calc(env(safe-area-inset-top)+40px)]">
       <div className="mb-6">
-        <p className="text-[13px] font-medium uppercase tracking-wide text-accent">
+        <p className="text-[15px] font-medium text-muted">
           Willkommen
         </p>
-        <h1 className="mt-1 text-[28px] font-semibold leading-tight tracking-tight text-text">
+        <h1 className="mt-1 font-serif text-[38px] font-semibold leading-[1.05] tracking-[-0.015em] text-text">
           Vorrat &amp; Ernährung
         </h1>
         <p className="mt-2 text-[15px] text-muted">

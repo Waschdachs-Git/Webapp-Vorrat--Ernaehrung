@@ -146,6 +146,6 @@ export interface CategoryHint {
 export interface Settings {
   id: number;
   spoonacularApiKey?: string;
-  accentColor: string; // hex, e.g. '#3b6e4f'
+  accentColor: string; // hex, e.g. '#247a4e'
   theme: ThemeMode;
 }

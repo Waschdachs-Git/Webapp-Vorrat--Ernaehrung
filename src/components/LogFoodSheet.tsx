@@ -1,15 +1,10 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, Package, Apple, Pencil, ScanLine, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown } from 'lucide-react';
 import { db } from '@/db/database';
 import { BottomSheet } from './BottomSheet';
 import { LazyBarcodeScanner } from './LazyBarcodeScanner';
-import {
-  Button,
-  Field,
-  Input,
-  cx,
-} from './ui';
+import { Button, Field, Input, TextTabs, cx } from './ui';
 import { scaleNutriments } from '@/lib/nutrition';
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
@@ -28,6 +23,8 @@ interface Picked {
   refId?: number;
   /** Known weight of one piece (unit 'pcs' only). */
   gramsPerPiece?: number;
+  /** Amount logged last time, used as the default portion. */
+  lastAmount?: number;
 }
 
 /** Fallback weight per piece when the item has none stored yet. */
@@ -70,6 +67,19 @@ export function LogFoodSheet({
 
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const foods = useLiveQuery(() => db.foodsLocal.toArray(), []);
+  // Last amount eaten per food: shown in the list and pre-filled in the
+  // portion step, so the usual portion is one tap away.
+  const lastAmounts = useLiveQuery(async () => {
+    const recent = await db.diary.orderBy('datetime').reverse().limit(150).toArray();
+    const map = new Map<string, number>();
+    for (const e of recent) {
+      for (const it of e.items) {
+        const k = it.name.toLowerCase();
+        if (!map.has(k)) map.set(k, it.amount);
+      }
+    }
+    return map;
+  }, []);
 
   const reset = () => {
     setPicked(null);
@@ -119,12 +129,16 @@ export function LogFoodSheet({
       <div className="flex flex-col gap-4">
         <MealChip value={meal} onChange={setMeal} />
 
-        <div className="flex gap-1 rounded-xl bg-surface-2 p-1">
-          <SourceTab icon={<Package size={16} />} label="Vorrat" active={source === 'inventory'} onClick={() => setSource('inventory')} />
-          <SourceTab icon={<Apple size={16} />} label="Lebensmittel" active={source === 'foods'} onClick={() => setSource('foods')} />
-          <SourceTab icon={<ScanLine size={16} />} label="Scan" active={source === 'scan'} onClick={() => setSource('scan')} />
-          <SourceTab icon={<Pencil size={16} />} label="Manuell" active={source === 'free'} onClick={() => setSource('free')} />
-        </div>
+        <TextTabs
+          value={source}
+          onChange={setSource}
+          options={[
+            { value: 'inventory', label: 'Vorrat' },
+            { value: 'foods', label: 'Lebensmittel' },
+            { value: 'scan', label: 'Scan' },
+            { value: 'free', label: 'Manuell' },
+          ]}
+        />
 
         {source === 'scan' ? (
           <ScanPick onPicked={setPicked} onManual={() => setSource('free')} />
@@ -152,7 +166,13 @@ export function LogFoodSheet({
                       <PickRow
                         key={i.id}
                         title={i.name}
-                        sub={`${formatAmount(i.amount, i.unit)} da · ${Math.round(i.nutrimentsPer100!.kcal)} kcal/100 ${i.unit === 'ml' ? 'ml' : 'g'}`}
+                        sub={`${formatAmount(i.amount, i.unit)} da`}
+                        kcal={`${Math.round(i.nutrimentsPer100!.kcal)} kcal`}
+                        per={i.unit === 'ml' ? 'ml' : 'g'}
+                        last={(() => {
+                          const a = lastAmounts?.get(i.name.toLowerCase());
+                          return a ? `zuletzt ${formatAmount(a, i.unit)}` : undefined;
+                        })()}
                         status={
                           days === null || days > 3
                             ? undefined
@@ -169,6 +189,7 @@ export function LogFoodSheet({
                             sourceType: 'inventory',
                             refId: i.id,
                             gramsPerPiece: i.gramsPerPiece,
+                            lastAmount: lastAmounts?.get(i.name.toLowerCase()),
                           })
                         }
                       />
@@ -178,7 +199,9 @@ export function LogFoodSheet({
                     <PickRow
                       key={f.id}
                       title={f.name}
-                      sub={`${Math.round(f.kcal)} kcal / 100 ${f.defaultUnit}`}
+                      sub={f.defaultUnit === 'ml' ? 'Getränk / flüssig' : 'Grundnahrungsmittel'}
+                      kcal={`${Math.round(f.kcal)} kcal`}
+                      per={f.defaultUnit === 'ml' ? 'ml' : 'g'}
                       onClick={() =>
                         setPicked({
                           name: f.name,
@@ -207,40 +230,23 @@ export function LogFoodSheet({
   );
 }
 
-function SourceTab({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}): ReactNode {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-1 py-2 text-[12px] font-medium transition-colors',
-        active ? 'bg-surface text-text shadow-card' : 'text-muted',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
 
 function PickRow({
   title,
   sub,
+  kcal,
+  per = 'g',
+  last,
   status,
   onClick,
 }: {
+  /** e.g. "zuletzt 60 g" – replaces the per-100 g figure when known. */
+  last?: string;
   title: string;
   sub: string;
+  per?: 'g' | 'ml';
+  /** Per 100 g/ml, right-aligned so the left side stays one short line. */
+  kcal?: string;
   status?: { text: string; tone: 'warn' | 'danger' };
   onClick: () => void;
 }): ReactNode {
@@ -248,20 +254,30 @@ function PickRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[56px] w-full items-center gap-3 border-b border-border px-1 py-2.5 text-left last:border-b-0 active:bg-surface-2"
+      className="flex min-h-[58px] w-full items-center gap-3 border-b border-border py-2.5 text-left last:border-b-0 active:bg-surface-2"
     >
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium text-text">{title}</p>
-        <p className="tnum truncate text-[12.5px] text-faint">
-          {status && (
+        <p className="tnum truncate text-[13px] text-faint">
+          {status ? (
             <span className={status.tone === 'danger' ? 'text-danger' : 'text-warn'}>
-              {status.text} ·{' '}
+              {status.text}
             </span>
+          ) : (
+            sub
           )}
-          {sub}
         </p>
       </div>
-      <ChevronRight size={18} className="shrink-0 text-faint" />
+      {last ? (
+        <span className="tnum shrink-0 text-right text-[13px] font-medium text-accent">{last}</span>
+      ) : (
+        kcal && (
+          <span className="tnum shrink-0 text-right text-[13px] text-muted">
+            {kcal}
+            <span className="block text-[11px] text-faint">pro 100 {per}</span>
+          </span>
+        )
+      )}
     </button>
   );
 }
@@ -281,7 +297,7 @@ function PortionStep({
 }): ReactNode {
   const isPcs = picked.unit === 'pcs';
   const presets = isPcs ? [1, 2, 3] : [50, 100, 150, 200];
-  const [amount, setAmount] = useState<number>(isPcs ? 1 : 100);
+  const [amount, setAmount] = useState<number>(picked.lastAmount ?? (isPcs ? 1 : 100));
   const [gramsPerPiece, setGramsPerPiece] = useState<number>(
     picked.gramsPerPiece ?? DEFAULT_GRAMS_PER_PIECE,
   );
@@ -341,7 +357,7 @@ function PortionStep({
             className={cx(
               'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
               amount === p
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-white dark:text-bg'
                 : 'bg-surface-2 text-muted',
             )}
           >

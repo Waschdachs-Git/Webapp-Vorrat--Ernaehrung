@@ -137,10 +137,12 @@ export function buildRecommendations(args: {
         kind: 'fit',
         title: `Passt noch in deinen Tag: ${best.recipe.title}`,
         detail:
-          `${Math.round(n.kcal)} kcal · ${Math.round(n.protein)} g Protein pro Portion` +
-          (best.inStock
-            ? ` · ${best.inStock}/${best.recipe.ingredients.length} Zutaten da`
-            : ''),
+          `${Math.round(n.kcal)} kcal · ${Math.round(n.protein)} g Protein` +
+          (best.inStock === best.recipe.ingredients.length
+            ? ' · alle Zutaten da'
+            : best.inStock
+              ? ` · ${best.recipe.ingredients.length - best.inStock} Zutat(en) fehlen`
+              : ''),
         action: { type: 'cook', recipeId: best.recipe.id },
         actionLabel: 'Kochen',
       });
@@ -159,8 +161,8 @@ export function buildRecommendations(args: {
       recs.push({
         id: `variety-${fresh.id}`,
         kind: 'variety',
-        title: 'Für Abwechslung',
-        detail: `Lange nicht gekocht: ${fresh.title}`,
+        title: fresh.title,
+        detail: 'Lange nicht gekocht',
         action: { type: 'cook', recipeId: fresh.id },
         actionLabel: 'Kochen',
       });

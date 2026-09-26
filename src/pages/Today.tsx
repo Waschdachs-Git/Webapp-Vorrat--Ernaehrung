@@ -1,18 +1,9 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  Plus,
-  AlarmClock,
-  Shuffle,
-  RotateCcw,
-  Beef,
-  CookingPot,
-  ChevronRight,
-} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Plus, ChevronRight } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
-import { CalorieRing } from '@/components/CalorieRing';
-import { MacroBars } from '@/components/MacroBars';
 import { LogFoodSheet } from '@/components/LogFoodSheet';
 import { CookRecipeSheet } from '@/components/CookRecipeSheet';
 import {
@@ -20,7 +11,7 @@ import {
   type DiaryItemRef,
 } from '@/components/DiaryItemSheet';
 import { useUndo } from '@/components/UndoToast';
-import { AddButton, Card, cx } from '@/components/ui';
+import { AddButton, Section, cx } from '@/components/ui';
 import { useToday } from '@/hooks/useToday';
 import {
   defaultMealType,
@@ -38,7 +29,9 @@ import type {
   DiaryItem,
   InventoryItem,
   MealType,
+  Nutriments,
   OwnRecipe,
+  Targets,
 } from '@/db/types';
 
 const MEALS: { key: MealType; label: string }[] = [
@@ -137,92 +130,89 @@ export function Today(): ReactNode {
     month: 'long',
   });
 
+  const suggestionList = recs.length > 0 && (
+    <Section title="Vorschläge">
+      <ul>
+        {recs.map((r) => (
+          <li key={r.id} className="border-b border-border last:border-b-0">
+            <SuggestionRow rec={r} onAction={() => runRecommendation(r)} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+
   return (
     <div className="pb-24">
       <PageHeader
         title="Heute"
         subtitle={todayLabel}
-        action={<AddButton label="Eintragen" onClick={() => openLog()} />}
+        action={<AddButton prominent label="Eintragen" onClick={() => openLog()} />}
       />
 
       {/* minmax(0,…) is essential: without it the grid track grows to the
           min-content width of the scrolling chip row and overflows the phone. */}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 px-5 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:items-start">
-        {/* Left column on iPad: the day at a glance */}
-        <div className="flex min-w-0 flex-col gap-5 md:sticky md:top-2">
-          <Card className="flex flex-col items-center gap-4 py-5">
-            <CalorieRing consumed={consumed.kcal} goal={targets.kcal} size={156} stroke={12} />
-            <div className="w-full">
-              <MacroBars consumed={consumed} targets={targets} />
-            </div>
-          </Card>
-          {/* On iPad the week sits under the ring; on the phone it moves to
-              the end so meals stay above the fold. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-9 px-5 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:items-start md:gap-10">
+        <div className="flex min-w-0 flex-col gap-9 md:sticky md:top-2">
+          <DayBalance consumed={consumed} targets={targets} />
+          <div className="hidden md:block">{suggestionList}</div>
           <div className="hidden md:block">
             <WeekStrip goal={targets.kcal} />
           </div>
         </div>
 
-        {/* Right column on iPad: what to do next */}
-        <div className="flex min-w-0 flex-col gap-5">
-          {recentItems.length > 0 && (
-            <section>
-              <SectionTitle hint="Tippen trägt dieselbe Menge ein">
-                Schnell nochmal
-              </SectionTitle>
-              {/* Fade on the right edge signals that the row scrolls. */}
-              <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 [mask-image:linear-gradient(to_right,black_calc(100%-40px),transparent)] md:mx-0 md:px-0">
+        <div className="flex min-w-0 flex-col gap-9">
+          <Section title="Mahlzeiten">
+            {recentItems.length > 0 && (
+              // Fade on the right edge signals that the row scrolls.
+              <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-1 pt-3 [mask-image:linear-gradient(to_right,black_calc(100%-40px),transparent)] md:mx-0 md:px-0">
+                <span className="flex shrink-0 items-center pr-1 text-[13px] text-faint">
+                  Nochmal:
+                </span>
                 {recentItems.map((item) => (
                   <button
                     key={item.name}
                     type="button"
                     onClick={() => quickLog(item)}
-                    aria-label={`${item.name} erneut loggen`}
-                    className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-medium text-text active:bg-surface-2"
+                    aria-label={`${item.name} erneut eintragen`}
+                    className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-[8px] border border-border px-3 text-[14px] font-medium text-text active:bg-surface-2"
                   >
-                    <RotateCcw size={14} className="text-accent" />
                     {item.name}
-                    <span className="tnum text-faint">
+                    <span className="tnum font-normal text-muted">
                       {formatAmount(item.amount, item.unit)}
                     </span>
                   </button>
                 ))}
               </div>
-            </section>
-          )}
+            )}
 
-          <section>
-            <SectionTitle>Mahlzeiten</SectionTitle>
-
-            {/* All four meals are always shown: an empty slot is the fastest
-                way to log exactly that meal. */}
-            <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-              {MEALS.map(({ key, label }, idx) => {
+            <ul>
+              {MEALS.map(({ key, label }) => {
                 const list = byMeal[key];
                 const kcal = list.reduce((s, e) => s + e.totals.kcal, 0);
                 return (
-                  <div
-                    key={key}
-                    className={cx(idx > 0 && 'border-t border-border')}
-                  >
-                    <div className="flex min-h-[48px] items-center justify-between pl-4 pr-2">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-faint">
-                        {label}
+                  <li key={key} className="border-b border-border py-2 last:border-b-0">
+                    <div className="flex min-h-[44px] items-center justify-between gap-3">
+                      <p className="text-[16px] font-semibold text-text">{label}</p>
+                      <div className="flex items-center gap-1">
                         {list.length > 0 && (
-                          <span className="tnum ml-2 font-medium normal-case tracking-normal text-muted">
+                          <span className="tnum text-[14px] text-muted">
                             {Math.round(kcal)} kcal
                           </span>
                         )}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => openLog(key)}
-                        aria-label={`${label} hinzufügen`}
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-accent active:bg-accent-soft"
-                      >
-                        <Plus size={20} />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => openLog(key)}
+                          aria-label={`${label} eintragen`}
+                          className="-mr-2 flex h-10 w-10 items-center justify-center rounded-full text-accent active:bg-accent-soft"
+                        >
+                          <Plus size={20} strokeWidth={2.2} />
+                        </button>
+                      </div>
                     </div>
+                    {list.length === 0 && (
+                      <p className="pb-1 text-[14px] text-faint">Noch nichts eingetragen</p>
+                    )}
                     {list.map((entry) =>
                       entry.items.map((item, i) => (
                         <button
@@ -232,50 +222,29 @@ export function Today(): ReactNode {
                             entry.id !== undefined &&
                             setEditTarget({ entryId: entry.id, itemIndex: i, item })
                           }
-                          className="flex min-h-[48px] w-full items-center justify-between gap-3 px-4 pb-2.5 text-left active:bg-surface-2"
+                          className="-mx-2 flex min-h-[44px] w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-[10px] px-2 py-1 text-left active:bg-surface-2"
                         >
-                          <div className="min-w-0">
-                            <p className="truncate text-[15px] text-text">
+                          <span className="min-w-0">
+                            <span className="block truncate text-[15px] text-text">
                               {item.name}
-                            </p>
-                            <p className="tnum text-[12px] text-faint">
-                              {formatAmount(item.amount, item.unit)} ·{' '}
-                              {formatTime(entry.datetime)}
-                            </p>
-                          </div>
-                          <span className="tnum shrink-0 text-[15px] font-medium text-muted">
-                            {Math.round(item.kcal)} kcal
+                            </span>
+                            <span className="tnum block text-[13px] text-faint">
+                              {formatAmount(item.amount, item.unit)} · {formatTime(entry.datetime)}
+                            </span>
+                          </span>
+                          <span className="tnum shrink-0 text-[15px] text-muted">
+                            {Math.round(item.kcal)}
                           </span>
                         </button>
                       )),
                     )}
-                  </div>
+                  </li>
                 );
               })}
-            </div>
-            {entries.length === 0 && (
-              <p className="mt-2 px-1 text-[13px] text-faint">
-                Tippe auf <span className="font-medium text-muted">+</span> neben
-                einer Mahlzeit, um sie zu erfassen.
-              </p>
-            )}
-          </section>
+            </ul>
+          </Section>
 
-          {recs.length > 0 && (
-            <section>
-              <SectionTitle>Vorschläge</SectionTitle>
-              <div className="flex flex-col gap-2">
-                {recs.map((r) => (
-                  <RecommendationCard
-                    key={r.id}
-                    rec={r}
-                    onAction={() => runRecommendation(r)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
+          <div className="md:hidden">{suggestionList}</div>
           <div className="md:hidden">
             <WeekStrip goal={targets.kcal} />
           </div>
@@ -305,61 +274,125 @@ export function Today(): ReactNode {
   );
 }
 
-function SectionTitle({
-  children,
-  hint,
+/**
+ * The day at a glance, set as type rather than as a fitness ring: one large
+ * serif figure, a thin progress rule, and the three macros underneath.
+ */
+function DayBalance({
+  consumed,
+  targets,
 }: {
-  children: ReactNode;
-  hint?: string;
+  consumed: Nutriments;
+  targets: Targets;
 }): ReactNode {
+  const left = Math.round(targets.kcal - consumed.kcal);
+  const over = left < 0;
+  const pct = targets.kcal > 0 ? Math.min(1, consumed.kcal / targets.kcal) : 0;
+  const macros = [
+    { key: 'protein', label: 'Protein', color: 'bg-protein' },
+    { key: 'carbs', label: 'Kohlenhydrate', color: 'bg-carbs' },
+    { key: 'fat', label: 'Fett', color: 'bg-fat' },
+  ] as const;
+
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
-      <h2 className="shrink-0 text-[15px] font-semibold text-text">{children}</h2>
-      {hint && <span className="truncate text-[12px] text-faint">{hint}</span>}
-    </div>
+    <section aria-label="Tagesbilanz">
+      <p className="flex items-baseline gap-2.5">
+        <span
+          className={cx(
+            'tnum font-serif text-[64px] font-medium leading-[0.9] tracking-[-0.03em]',
+            over ? 'text-warn' : 'text-text',
+          )}
+        >
+          {Math.abs(left).toLocaleString('de-DE')}
+        </span>
+        <span className="text-[16px] text-muted">
+          {over ? 'kcal über dem Ziel' : 'kcal übrig'}
+        </span>
+      </p>
+
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-2">
+        <motion.div
+          className={cx('h-full w-full origin-left rounded-full', over ? 'bg-warn' : 'bg-accent')}
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: pct }}
+          transition={{ type: 'spring', stiffness: 140, damping: 24 }}
+        />
+      </div>
+      <p className="tnum mt-2 flex justify-between text-[13px] text-faint">
+        <span>{Math.round(consumed.kcal).toLocaleString('de-DE')} gegessen</span>
+        <span>Ziel {targets.kcal.toLocaleString('de-DE')}</span>
+      </p>
+
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        {macros.map((m) => {
+          const value = consumed[m.key];
+          const goal = targets[m.key];
+          const rest = Math.round(goal - value);
+          return (
+            <div key={m.key} className="min-w-0">
+              <p className="truncate text-[13px] text-muted">{m.label}</p>
+              <p className="tnum mt-0.5 text-[17px] font-semibold text-text">
+                {Math.round(value)}
+                <span className="text-[13px] font-normal text-faint"> / {goal} g</span>
+              </p>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-2">
+                <motion.div
+                  className={cx('h-full w-full origin-left rounded-full', m.color)}
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: goal > 0 ? Math.min(1, value / goal) : 0 }}
+                  transition={{ type: 'spring', stiffness: 140, damping: 24 }}
+                />
+              </div>
+              <p className={cx('tnum mt-1 text-[12px]', rest < 0 ? 'text-warn' : 'text-faint')}>
+                {rest < 0 ? `${-rest} g drüber` : `noch ${rest} g`}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
-function RecommendationCard({
+const KICKER: Record<Recommendation['kind'], { text: string; tone: string }> = {
+  expiring: { text: 'Zuerst verbrauchen', tone: 'text-warn' },
+  protein: { text: 'Protein', tone: 'text-protein' },
+  fit: { text: 'Passt noch in den Tag', tone: 'text-accent' },
+  variety: { text: 'Abwechslung', tone: 'text-muted' },
+};
+
+function SuggestionRow({
   rec,
   onAction,
 }: {
   rec: Recommendation;
   onAction: () => void;
 }): ReactNode {
-  const icon =
-    rec.kind === 'protein' ? (
-      <Beef size={18} />
-    ) : rec.kind === 'expiring' ? (
-      <AlarmClock size={18} />
-    ) : rec.kind === 'fit' ? (
-      <CookingPot size={18} />
-    ) : (
-      <Shuffle size={18} />
-    );
-  const Wrapper = rec.action ? 'button' : 'div';
-  return (
-    <Wrapper
-      {...(rec.action ? { type: 'button' as const, onClick: onAction } : {})}
-      className={cx(
-        'flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left',
-        rec.action && 'active:bg-surface-2',
-      )}
-    >
-      <span
-        className={cx(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-          rec.kind === 'expiring' ? 'bg-warn/15 text-warn' : 'bg-accent-soft text-accent',
-        )}
-      >
-        {icon}
+  const kicker = KICKER[rec.kind];
+  // Titles repeat the kicker ("Zuerst verbrauchen: X") – keep only the subject.
+  const title = rec.title.includes(': ') ? rec.title.split(': ').slice(1).join(': ') : rec.title;
+  const body = (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className={cx('block text-[12.5px] font-semibold', kicker.tone)}>
+          {kicker.text}
+        </span>
+        <span className="block text-[16px] font-medium leading-snug text-text">{title}</span>
+        <span className="block text-[13.5px] leading-snug text-muted">{rec.detail}</span>
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-medium leading-snug text-text">{rec.title}</p>
-        <p className="text-[13px] leading-snug text-muted">{rec.detail}</p>
-      </div>
       {rec.action && <ChevronRight size={18} className="shrink-0 text-faint" />}
-    </Wrapper>
+    </>
+  );
+  return rec.action ? (
+    <button
+      type="button"
+      onClick={onAction}
+      className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-[10px] px-2 py-3 text-left active:bg-surface-2"
+    >
+      {body}
+    </button>
+  ) : (
+    <div className="flex items-center gap-3 py-3">{body}</div>
   );
 }
 
@@ -395,17 +428,17 @@ function WeekStrip({ goal }: { goal: number }): ReactNode {
   const max = Math.max(goal * 1.25, ...totals);
 
   return (
-    <Card>
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-[15px] font-semibold text-text">Letzte 7 Tage</h2>
-        {avg > 0 && (
-          <span className="tnum text-[12px] text-faint">Ø {avg} kcal</span>
-        )}
-      </div>
-      <div className="relative flex h-24 items-end gap-2">
-        {/* Goal line */}
+    <Section
+      title="Letzte 7 Tage"
+      action={
+        avg > 0 ? (
+          <span className="tnum text-[13px] text-faint">Ø {avg.toLocaleString('de-DE')} kcal</span>
+        ) : undefined
+      }
+    >
+      <div className="relative mt-4 flex h-20 items-end gap-2">
         <div
-          className="pointer-events-none absolute inset-x-0 border-t border-dashed border-border"
+          className="pointer-events-none absolute inset-x-0 border-t border-dashed border-faint/50"
           style={{ bottom: `${(goal / max) * 100}%` }}
           aria-hidden
         />
@@ -416,10 +449,14 @@ function WeekStrip({ goal }: { goal: number }): ReactNode {
             <div key={days[i]} className="flex h-full flex-1 flex-col justify-end">
               <div
                 className={cx(
-                  'w-full origin-bottom rounded-md',
-                  t === 0 ? 'bg-surface-2' : over ? 'bg-warn/70' : isToday ? 'bg-accent' : 'bg-accent/45',
+                  'w-full rounded-[4px]',
+                  t === 0
+                    ? 'border border-dashed border-border'
+                    : over ? 'bg-warn/70' : isToday ? 'bg-accent' : 'bg-accent/40',
                 )}
-                style={{ height: t === 0 ? '4px' : `${Math.max(6, (t / max) * 100)}%` }}
+                // Empty days show a dashed outline at goal height instead of a
+                // hairline stub, so a new user's week does not look broken.
+                style={{ height: `${t === 0 ? (goal / max) * 100 : Math.max(6, (t / max) * 100)}%` }}
                 title={`${Math.round(t)} kcal`}
               />
             </div>
@@ -431,7 +468,7 @@ function WeekStrip({ goal }: { goal: number }): ReactNode {
           <span
             key={d}
             className={cx(
-              'flex-1 text-center text-[11px]',
+              'flex-1 text-center text-[12px]',
               i === 6 ? 'font-semibold text-text' : 'text-faint',
             )}
           >
@@ -439,7 +476,7 @@ function WeekStrip({ goal }: { goal: number }): ReactNode {
           </span>
         ))}
       </div>
-    </Card>
+    </Section>
   );
 }
 

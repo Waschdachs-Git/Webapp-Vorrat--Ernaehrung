@@ -38,8 +38,8 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'any',
-        background_color: '#faf8f4',
-        theme_color: '#3b6e4f',
+        background_color: '#f4f3ef',
+        theme_color: '#247a4e',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -53,6 +53,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Only precache Latin font subsets; others download on demand.
+        globIgnores: ['**/*-{cyrillic,cyrillic-ext,greek,greek-ext,vietnamese}-*.woff2'],
         runtimeCaching: [
           {
             // External API calls: network-first with a cache fallback so the

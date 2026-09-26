@@ -23,23 +23,28 @@ export default {
         fat: 'rgb(var(--c-fat) / <alpha-value>)',
       },
       fontFamily: {
+        // Apple devices get SF (native feel); everything else the bundled Inter.
         sans: [
-          'Inter',
-          'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
+          '"Inter Variable"',
+          'system-ui',
           'Segoe UI',
           'Roboto',
           'sans-serif',
         ],
+        // Editorial serif for page titles and hero numbers only.
+        serif: ['"Newsreader Variable"', 'Georgia', 'serif'],
       },
       borderRadius: {
         xl: '0.875rem',
         '2xl': '1.25rem',
       },
       boxShadow: {
-        sheet: '0 -8px 40px -12px rgb(0 0 0 / 0.25)',
-        card: '0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06)',
+        sheet: '0 -12px 48px -16px rgb(0 0 0 / 0.28)',
+        // Barely-there lift; cards are separated by the paper ground.
+        card: '0 1px 2px rgb(40 32 16 / 0.05)',
+        pop: '0 1px 2px rgb(0 0 0 / 0.06), 0 2px 6px rgb(0 0 0 / 0.06)',
       },
     },
   },

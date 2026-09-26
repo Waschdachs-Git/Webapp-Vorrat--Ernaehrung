@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(__dirname, '..', 'public');
 mkdirSync(PUBLIC, { recursive: true });
 
-const BG = [59, 110, 79]; // accent green
+const BG = [36, 122, 78]; // accent green
 const RING = [250, 248, 244]; // warm off-white
 
 function crc32(buf) {
@@ -91,7 +91,7 @@ for (const [name, size] of [
 
 // A simple SVG favicon (same motif, vector).
 const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#3b6e4f"/>
+  <rect width="64" height="64" rx="14" fill="#247a4e"/>
   <circle cx="32" cy="32" r="17" fill="none" stroke="#faf8f4" stroke-width="7"/>
 </svg>`;
 writeFileSync(join(PUBLIC, 'favicon.svg'), favicon);
