@@ -9,8 +9,8 @@ import { daysUntil } from './date';
 import { classifyByName } from './categories';
 
 export type RecommendationAction =
-  | { type: 'log'; inventoryId: number }
-  | { type: 'cook'; recipeId: number };
+  | { type: 'log'; inventoryId: string }
+  | { type: 'cook'; recipeId: string };
 
 export interface Recommendation {
   id: string;

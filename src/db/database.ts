@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import dexieCloud from 'dexie-cloud-addon';
 import type {
   Profile,
   WeightLog,
@@ -11,57 +12,74 @@ import type {
   CategoryHint,
 } from './types';
 import { SEED_FOODS } from './seed';
+import { CLOUD_DATABASE_URL } from './cloudConfig';
 import { classify, type FoodCategory } from '@/lib/categories';
 
-export const PROFILE_ID = 1;
-export const SETTINGS_ID = 1;
+// Singletons use private ids ("#…"): Dexie Cloud scopes them to the logged-in
+// user, so every account has exactly one profile and one settings row.
+export const PROFILE_ID = '#profile';
+export const SETTINGS_ID = '#settings';
 
 export const DEFAULT_ACCENT = '#247a4e';
 /** Previous default; users who never changed it move to the new one. */
 const LEGACY_DEFAULT_ACCENT = '#3b6e4f';
 
+/** Name of the pre-sync database (numeric ids), migrated once on startup. */
+export const LEGACY_DB_NAME = 'vorrat-ernaehrung';
+
 export class AppDatabase extends Dexie {
-  profile!: Table<Profile, number>;
-  weightLog!: Table<WeightLog, number>;
-  inventory!: Table<InventoryItem, number>;
-  shoppingList!: Table<ShoppingItem, number>;
-  recipesOwn!: Table<OwnRecipe, number>;
-  diary!: Table<DiaryEntry, number>;
-  foodsLocal!: Table<LocalFood, number>;
-  settings!: Table<Settings, number>;
+  profile!: Table<Profile, string>;
+  weightLog!: Table<WeightLog, string>;
+  inventory!: Table<InventoryItem, string>;
+  shoppingList!: Table<ShoppingItem, string>;
+  recipesOwn!: Table<OwnRecipe, string>;
+  diary!: Table<DiaryEntry, string>;
+  foodsLocal!: Table<LocalFood, string>;
+  settings!: Table<Settings, string>;
   categoryHints!: Table<CategoryHint, string>;
 
   constructor() {
-    super('vorrat-ernaehrung');
+    super('vorrat-ernaehrung-sync', { addons: [dexieCloud] });
+    // A new database rather than a version bump: IndexedDB cannot change a
+    // table's primary key, and sync needs globally unique string ids ("@id"
+    // lets Dexie Cloud generate them) instead of auto-incremented numbers.
     this.version(1).stores({
-      // Only indexed fields are listed; objects are stored whole.
       profile: 'id',
-      weightLog: '++id, date',
-      inventory: '++id, name, location, isStaple, bestBefore, barcode',
-      shoppingList: '++id, name, checked, source',
-      recipesOwn: '++id, title, *tags',
-      diary: '++id, datetime, mealType',
-      foodsLocal: '++id, name',
+      weightLog: '@id, date',
+      inventory: '@id, name, location, bestBefore, barcode, addedAt',
+      shoppingList: '@id, name, source, addedAt',
+      recipesOwn: '@id, title, *tags',
+      diary: '@id, datetime, mealType',
+      // The bundled food table is reference data – never synced. String ids
+      // because the addon rejects auto-increment keys in any table it might
+      // sync (it only learns about `unsyncedTables` once a URL is configured).
+      foodsLocal: 'id, name',
       settings: 'id',
+      categoryHints: 'id',
     });
 
-    // v2: IndexedDB cannot index boolean values, so the `isStaple` and
-    // `checked` indexes never held any records — they were dead weight and
-    // made `where('checked')` look usable when it always returns nothing.
-    // `addedAt` replaces them where an index is actually useful.
-    this.version(2).stores({
-      inventory: '++id, name, location, bestBefore, barcode, addedAt',
-      shoppingList: '++id, name, source, addedAt',
-    });
-
-    // v3: remembered category corrections, keyed by the lowercased name.
-    this.version(3).stores({
-      categoryHints: 'name',
-    });
+    if (CLOUD_DATABASE_URL) {
+      this.cloud.configure({
+        databaseUrl: CLOUD_DATABASE_URL,
+        // The app stays fully usable without an account; logging in is an
+        // opt-in from the settings (or the onboarding on a second device).
+        requireAuth: false,
+        customLoginGui: true,
+        socialAuth: false,
+        // Keep the IndexedDB name stable no matter which cloud DB is used.
+        nameSuffix: false,
+        unsyncedTables: ['foodsLocal'],
+        // The app has its own service worker (vite-plugin-pwa).
+        tryUseServiceWorker: false,
+      });
+    }
   }
 }
 
 export const db = new AppDatabase();
+
+/** Whether a cloud database is configured for this build. */
+export const cloudEnabled = Boolean(CLOUD_DATABASE_URL);
 
 let seedPromise: Promise<void> | null = null;
 
@@ -78,16 +96,14 @@ export function ensureSeeded(force = false): Promise<void> {
       if (existingSettings?.accentColor.toLowerCase() === LEGACY_DEFAULT_ACCENT) {
         await db.settings.update(SETTINGS_ID, { accentColor: DEFAULT_ACCENT });
       }
-      if (!existingSettings) {
-        await db.settings.put({
-          id: SETTINGS_ID,
-          accentColor: DEFAULT_ACCENT,
-          theme: 'system',
-        });
-      }
+      // No default settings row is written: useSettings falls back to the
+      // defaults, and a seeded row would overwrite the account's settings
+      // when this device logs in for the first time.
       const foodCount = await db.foodsLocal.count();
       if (foodCount === 0) {
-        await db.foodsLocal.bulkAdd(SEED_FOODS as LocalFood[]);
+        await db.foodsLocal.bulkAdd(
+          (SEED_FOODS as LocalFood[]).map((f, i) => ({ ...f, id: `food${i}` })),
+        );
       }
     })();
   }
@@ -104,7 +120,7 @@ export async function classifyWithHints(
 ): Promise<FoodCategory> {
   const key = name.trim().toLowerCase();
   if (key) {
-    const hint = await db.categoryHints.get(key);
+    const hint = await db.categoryHints.get(hintId(key));
     if (hint) return hint.category;
   }
   return classify(name, offTags);
@@ -117,7 +133,11 @@ export async function rememberCategory(
 ): Promise<void> {
   const key = name.trim().toLowerCase();
   if (!key) return;
-  await db.categoryHints.put({ name: key, category });
+  await db.categoryHints.put({ id: hintId(key), name: key, category });
+}
+
+function hintId(lowercasedName: string): string {
+  return `#hint:${lowercasedName}`;
 }
 
 /**

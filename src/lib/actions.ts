@@ -25,7 +25,7 @@ export function defaultMealType(d = new Date()): MealType {
 }
 
 /** Append a diary entry from a list of items. */
-async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<number> {
+async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<string> {
   const totals = items.reduce<Nutriments>(
     (acc, i) =>
       addNutriments(acc, {
@@ -52,7 +52,7 @@ async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<number
 export async function logFood(args: {
   mealType: MealType;
   item: DiaryItem;
-}): Promise<number> {
+}): Promise<string> {
   const entryId = await bookDiary(args.mealType, [args.item]);
   if (args.item.sourceType === 'inventory' && args.item.refId !== undefined) {
     await subtractInventory(args.item.refId, args.item.amount);
@@ -71,7 +71,7 @@ export async function cookRecipe(args: {
   servingsCooked: number;
 }): Promise<CookResult> {
   const { recipe, servingsCooked, mealType } = args;
-  const subtracted: { id: number; amount: number }[] = [];
+  const subtracted: { id: string; amount: number }[] = [];
   const inventory = await db.inventory.toArray();
 
   // Subtract matched ingredients (scaled to the cooked portion of the recipe).
@@ -113,8 +113,8 @@ export async function cookRecipe(args: {
 }
 
 export interface CookResult {
-  entryId: number;
-  subtracted: { id: number; amount: number }[];
+  entryId: string;
+  subtracted: { id: string; amount: number }[];
 }
 
 /** Reverse a cookRecipe call: drop the diary entry, return the ingredients. */
@@ -125,7 +125,7 @@ export async function undoCook(result: CookResult): Promise<void> {
 }
 
 /** Reduce an inventory item's amount, clamping at 0. */
-export async function subtractInventory(id: number, amount: number): Promise<void> {
+export async function subtractInventory(id: string, amount: number): Promise<void> {
   const item = await db.inventory.get(id);
   if (!item) return;
   const next = Math.max(0, Math.round((item.amount - amount) * 10) / 10);
@@ -146,7 +146,7 @@ export function diaryItemFromPer100(args: {
   unit: DiaryItem['unit'];
   per100: Nutriments;
   sourceType: DiaryItem['sourceType'];
-  refId?: number;
+  refId?: string;
   nutritionAmount?: number;
 }): DiaryItem {
   const n = scaleNutriments(args.per100, args.nutritionAmount ?? args.amount);
@@ -201,7 +201,7 @@ export async function runAutoRestock(): Promise<void> {
 }
 
 /** Give an amount back to stock (used when a diary entry is reduced/removed). */
-export async function restoreInventory(id: number, amount: number): Promise<void> {
+export async function restoreInventory(id: string, amount: number): Promise<void> {
   const item = await db.inventory.get(id);
   if (!item) return;
   const next = Math.max(0, Math.round((item.amount + amount) * 10) / 10);
@@ -227,7 +227,7 @@ function recalcTotals(items: DiaryItem[]): Nutriments {
  * credited back. The entry itself is deleted once its last item is gone.
  */
 export async function deleteDiaryItem(
-  entryId: number,
+  entryId: string,
   itemIndex: number,
 ): Promise<void> {
   const entry = await db.diary.get(entryId);
@@ -252,7 +252,7 @@ export async function deleteDiaryItem(
  * and the difference is applied to stock.
  */
 export async function updateDiaryItemAmount(
-  entryId: number,
+  entryId: string,
   itemIndex: number,
   newAmount: number,
 ): Promise<void> {
@@ -285,7 +285,7 @@ export async function updateDiaryItemAmount(
 export async function repeatDiaryItem(
   item: DiaryItem,
   mealType: MealType,
-): Promise<number> {
+): Promise<string> {
   return logFood({ mealType, item: { ...item } });
 }
 

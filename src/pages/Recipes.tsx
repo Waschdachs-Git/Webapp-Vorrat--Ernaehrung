@@ -9,7 +9,7 @@ import {
   ExternalLink,
   ChevronRight,
 } from 'lucide-react';
-import { db } from '@/db/database';
+import { db, PROFILE_ID } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { RecipeEditorSheet } from '@/components/RecipeEditorSheet';
 import { CookRecipeSheet } from '@/components/CookRecipeSheet';
@@ -243,7 +243,7 @@ function CookMode({
 
 function SearchMode(): ReactNode {
   const settings = useSettings();
-  const profile = useLiveQuery(() => db.profile.get(1), []);
+  const profile = useLiveQuery(() => db.profile.get(PROFILE_ID), []);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<RecipeHit[] | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | string>('idle');

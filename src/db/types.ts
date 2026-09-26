@@ -1,4 +1,5 @@
-// Domain types for the local-first data model (Dexie tables).
+// Domain types for the local-first data model (Dexie tables). Synced tables
+// use string ids so records stay unique across devices (Dexie Cloud).
 
 import type { FoodCategory } from '@/lib/categories';
 
@@ -34,7 +35,7 @@ export interface Targets {
 
 /** Exactly one profile entry. */
 export interface Profile {
-  id: number;
+  id: string;
   name: string;
   sex: Sex;
   birthdate: string; // ISO date (YYYY-MM-DD)
@@ -50,13 +51,13 @@ export interface Profile {
 }
 
 export interface WeightLog {
-  id?: number;
+  id?: string;
   date: string; // ISO date
   weightKg: number;
 }
 
 export interface InventoryItem {
-  id?: number;
+  id?: string;
   name: string;
   brand?: string;
   barcode?: string;
@@ -77,14 +78,14 @@ export interface InventoryItem {
 }
 
 export interface ShoppingItem {
-  id?: number;
+  id?: string;
   name: string;
   category?: FoodCategory;
   amount?: number;
   unit?: Unit;
   checked: boolean;
   source: ShoppingSource;
-  linkedInventoryId?: number;
+  linkedInventoryId?: string;
   addedAt: string;
 }
 
@@ -95,7 +96,7 @@ export interface RecipeIngredient {
 }
 
 export interface OwnRecipe {
-  id?: number;
+  id?: string;
   title: string;
   servings: number;
   ingredients: RecipeIngredient[];
@@ -114,11 +115,11 @@ export interface DiaryItem {
   carbs: number;
   fat: number;
   sourceType: DiarySourceType;
-  refId?: number;
+  refId?: string;
 }
 
 export interface DiaryEntry {
-  id?: number;
+  id?: string;
   datetime: string; // ISO datetime
   mealType: MealType;
   items: DiaryItem[];
@@ -127,7 +128,7 @@ export interface DiaryEntry {
 
 /** Small standard DB for fresh/unpackaged foods, values per 100 g. */
 export interface LocalFood {
-  id?: number;
+  id?: string;
   name: string;
   kcal: number;
   protein: number;
@@ -138,13 +139,15 @@ export interface LocalFood {
 
 /** Remembered manual corrections: lowercased name -> category. */
 export interface CategoryHint {
+  /** Private per-user key: `#hint:<lowercased name>`. */
+  id: string;
   name: string;
   category: FoodCategory;
 }
 
 /** Exactly one settings entry. */
 export interface Settings {
-  id: number;
+  id: string;
   spoonacularApiKey?: string;
   accentColor: string; // hex, e.g. '#247a4e'
   theme: ThemeMode;

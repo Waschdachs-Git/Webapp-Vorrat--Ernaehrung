@@ -20,7 +20,7 @@ interface Picked {
   unit: Unit;
   per100: Nutriments;
   sourceType: 'inventory' | 'custom' | 'barcode';
-  refId?: number;
+  refId?: string;
   /** Known weight of one piece (unit 'pcs' only). */
   gramsPerPiece?: number;
   /** Amount logged last time, used as the default portion. */

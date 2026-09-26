@@ -52,7 +52,7 @@ export function draftFromProfile(p: Profile): ProfileDraft {
   };
 }
 
-export function draftToProfile(d: ProfileDraft, id: number): Profile {
+export function draftToProfile(d: ProfileDraft, id: string): Profile {
   return {
     id,
     name: d.name.trim() || 'Ich',

@@ -20,9 +20,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  // Disabled primary turns neutral: white on pale green read as broken.
-  primary:
-    'bg-accent text-white dark:text-bg active:opacity-90',
+  primary: 'bg-accent text-white dark:text-bg active:opacity-90',
   secondary: 'bg-surface-2 text-text active:bg-border',
   ghost: 'bg-transparent text-muted active:bg-surface-2',
   danger: 'bg-transparent text-danger active:bg-danger/10',

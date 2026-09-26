@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
-import { db, PROFILE_ID } from '@/db/database';
+import { db, PROFILE_ID, cloudEnabled } from '@/db/database';
+import { startCloudLogin, useCloudUser, useSyncState } from '@/hooks/useCloud';
 import {
   ProfileForm,
   emptyDraft,
@@ -31,10 +32,12 @@ export function Onboarding({ onDone }: { onDone: () => void }): ReactNode {
           Vorrat &amp; Ernährung
         </h1>
         <p className="mt-2 text-[15px] text-muted">
-          Ein paar Angaben, dann berechnen wir deine Tagesziele. Alles bleibt
-          lokal auf diesem Gerät.
+          Ein paar Angaben, dann berechnen wir deine Tagesziele. Ohne Anmeldung
+          bleibt alles lokal auf diesem Gerät.
         </p>
       </div>
+
+      {cloudEnabled && <ExistingAccount />}
 
       <ProfileForm
         draft={draft}
@@ -47,6 +50,40 @@ export function Onboarding({ onDone }: { onDone: () => void }): ReactNode {
         Die berechneten Werte sind Schätzungen zur Orientierung – keine
         medizinische Beratung.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Second device: log in instead of filling the form. Once the first sync has
+ * brought the profile down, the app leaves onboarding by itself.
+ */
+function ExistingAccount(): ReactNode {
+  const user = useCloudUser();
+  const sync = useSyncState();
+
+  if (user?.isLoggedIn) {
+    const done = sync?.phase === 'in-sync';
+    return (
+      <p className="mb-6 border-y border-border py-3 text-[14px] text-muted">
+        Angemeldet als <span className="font-medium text-text">{user.email}</span>.{' '}
+        {done
+          ? 'In deinem Konto gibt es noch kein Profil – leg es hier an.'
+          : 'Deine Daten werden geladen …'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mb-6 flex items-center justify-between gap-3 border-y border-border py-3">
+      <p className="text-[14px] text-muted">Schon auf einem anderen Gerät eingerichtet?</p>
+      <button
+        type="button"
+        onClick={startCloudLogin}
+        className="shrink-0 py-1 text-[15px] font-semibold text-accent"
+      >
+        Anmelden
+      </button>
     </div>
   );
 }

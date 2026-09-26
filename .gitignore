@@ -17,3 +17,6 @@ yarn-error.log*
 
 # TS build info
 *.tsbuildinfo
+
+# Dexie Cloud CLI credentials (never commit)
+dexie-cloud.key
