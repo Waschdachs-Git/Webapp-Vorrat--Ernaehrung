@@ -9,7 +9,7 @@ Eine installierbare Progressive Web App (PWA) für ein **iPad**, mit der eine
 Ein „gegessen/gekocht"-Vorgang **bucht ins Ernährungstagebuch UND zieht den
 Vorrat ab**.
 
-- **Single-User**, kein Backend, kein Login.
+- **Single-User**, kein eigenes Backend. Optionaler Login (E-Mail-Code) nur für den Abgleich zwischen iPhone und iPad über Dexie Cloud.
 - Alle Daten lokal in **IndexedDB** (über Dexie.js).
 - Oberfläche **Deutsch**.
 - Funktioniert **offline** — nur die externen API-Aufrufe (Open Food Facts,
