@@ -3,7 +3,7 @@
 Eine lokale, installierbare **PWA** für iPad zur Verwaltung von
 Lebensmittel-Vorrat und Ernährung. Local-first: alle Daten liegen auf dem Gerät
 (IndexedDB); wer will, meldet sich per E-Mail-Code an und gleicht iPhone und
-iPad über Dexie Cloud ab. Oberfläche auf Deutsch, offline-fähig.
+iPad über Dexie Cloud ab. Oberfläche auf Deutsch, offline-fähig https://webapp-vorrat-ernaehrung.vercel.app/heute.
 
 > Vorrat, Einkauf, Rezepte und Ernährungs-Tracking hängen zusammen: Ein
 > „gegessen/gekocht"-Vorgang bucht ins Tagebuch **und** zieht den Vorrat ab.
