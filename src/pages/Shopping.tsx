@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, ShoppingCart, Check, RefreshCw } from 'lucide-react';
 import { db } from '@/db/database';
@@ -23,6 +23,7 @@ export function Shopping(): ReactNode {
     [],
   );
   const [newName, setNewName] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
   const [restockItem, setRestockItem] = useState<ShoppingItem | null>(null);
 
   const open = useMemo(
@@ -50,17 +51,24 @@ export function Shopping(): ReactNode {
     }));
   }, [open]);
 
-  const add = async () => {
+  const add = async (e?: FormEvent) => {
+    e?.preventDefault();
     const name = newName.trim();
     if (!name) return;
-    await db.shoppingList.add({
-      name,
-      category: await classifyWithHints(name),
-      checked: false,
-      source: 'manual',
-      addedAt: nowISO(),
-    });
-    setNewName('');
+    setAddError(null);
+    try {
+      await db.shoppingList.add({
+        name,
+        category: await classifyWithHints(name),
+        checked: false,
+        source: 'manual',
+        addedAt: nowISO(),
+      });
+      setNewName('');
+    } catch (err) {
+      console.error('Hinzufügen fehlgeschlagen:', err);
+      setAddError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    }
   };
 
   const toggle = (item: ShoppingItem) =>
@@ -93,17 +101,32 @@ export function Shopping(): ReactNode {
       <PageHeader title="Einkauf" subtitle={`${open.length} offen`} />
 
       <div className="max-w-[640px] px-5">
-        <div className="flex gap-2">
+        <form onSubmit={add} className="flex gap-2">
           <Input
             placeholder="Was fehlt?"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && add()}
+            enterKeyHint="done"
+            autoComplete="off"
+            className="min-w-0 flex-1"
           />
-          <Button onClick={add} className="!px-3.5" aria-label="Hinzufügen">
+          <Button
+            type="submit"
+            // Keep the focus in the field: on iOS the tap would otherwise blur
+            // it first, the keyboard starts closing, the layout jumps and the
+            // tap ends up beside the button. It also allows adding in a row.
+            onMouseDown={(e) => e.preventDefault()}
+            className="shrink-0 !px-3.5"
+            aria-label="Hinzufügen"
+          >
             <Plus size={20} strokeWidth={2.4} />
           </Button>
-        </div>
+        </form>
+        {addError && (
+          <p role="alert" className="mt-2 text-[14px] text-danger">
+            {addError}
+          </p>
+        )}
 
         {(items?.length ?? 0) === 0 ? (
           <EmptyState
