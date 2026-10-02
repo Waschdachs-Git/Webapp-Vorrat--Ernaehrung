@@ -208,8 +208,16 @@ export function Profile(): ReactNode {
               value={newWeight}
               onChange={(e) => setNewWeight(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addWeight()}
+              className="min-w-0 flex-1"
             />
-            <Button onClick={addWeight} className="px-3" aria-label="Eintragen">
+            <Button
+              onClick={addWeight}
+              // Keep the field focused so iOS does not shift the layout
+              // under the finger (see the shopping list).
+              onMouseDown={(e) => e.preventDefault()}
+              className="shrink-0 px-3"
+              aria-label="Eintragen"
+            >
               <Plus size={20} />
             </Button>
           </div>
