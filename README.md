@@ -17,8 +17,10 @@ Details zu Produkt und Design: [`PRODUCT.md`](./PRODUCT.md) ·
   Empfehlungen (Tagesziel füllen / Ablaufendes verwerten / Abwechslung).
 - **Vorrat** – Barcode-Scan (Open Food Facts, kein Key) oder manuell, Lagerorte,
   MHD-/„wenig"-Badges, Grundnahrungsmittel mit Mindestbestand.
-- **Einkauf** – manuell + Auto-Nachkauf, Abhaken per Swipe, „in den Vorrat
-  übernehmen".
+- **Einkauf** – manuell + Auto-Nachkauf, Abhaken per Swipe. Nach dem Einkauf
+  „Zum Vorrat hinzufügen“: Produkte nacheinander scannen, Menge (aus der
+  Packungsgröße vorausgefüllt) und MHD prüfen; der Listeneintrag wird
+  zugeordnet und abgeräumt, gleiche Produkte werden zum Bestand addiert.
 - **Rezepte** – „Was kann ich kochen?", Spoonacular-Suche (Profil-Filter),
   eigene deutsche Rezepte, „Gekocht"-Buchung, fehlende Zutaten mit einem Tipp
   auf die Einkaufsliste. Startet mit einer Sammlung von 27 proteinreichen
