@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { db } from '@/db/database';
 import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input, Select, Textarea } from './ui';
+import { useUndo } from './UndoToast';
 import type { OwnRecipe, RecipeIngredient, Unit } from '@/db/types';
 
 interface IngredientDraft {
@@ -23,6 +24,9 @@ export function RecipeEditorSheet({
 }): ReactNode {
   const [title, setTitle] = useState(editRecipe?.title ?? '');
   const [servings, setServings] = useState(String(editRecipe?.servings ?? 2));
+  const [minutes, setMinutes] = useState(
+    editRecipe?.minutes ? String(editRecipe.minutes) : '',
+  );
   const [ingredients, setIngredients] = useState<IngredientDraft[]>(
     editRecipe?.ingredients.map((i) => ({
       name: i.name,
@@ -39,6 +43,7 @@ export function RecipeEditorSheet({
     fat: editRecipe?.nutritionPerServing ? String(editRecipe.nutritionPerServing.fat) : '',
   });
   const [saving, setSaving] = useState(false);
+  const showUndo = useUndo();
 
   const setIngredient = (idx: number, patch: Partial<IngredientDraft>) =>
     setIngredients((prev) =>
@@ -59,6 +64,7 @@ export function RecipeEditorSheet({
     const payload: Omit<OwnRecipe, 'id'> = {
       title: title.trim(),
       servings: parseFloat(servings) || 1,
+      minutes: Math.round(parseFloat(minutes)) || undefined,
       ingredients: parsedIngredients,
       steps: steps
         .split('\n')
@@ -87,6 +93,16 @@ export function RecipeEditorSheet({
     onClose();
   };
 
+  const remove = async () => {
+    if (editRecipe?.id === undefined) return;
+    const removed = editRecipe;
+    await db.recipesOwn.delete(removed.id!);
+    onClose();
+    showUndo(`„${removed.title}“ gelöscht`, async () => {
+      await db.recipesOwn.add(removed);
+    });
+  };
+
   return (
     <BottomSheet
       open={open}
@@ -98,14 +114,25 @@ export function RecipeEditorSheet({
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z. B. Linsen-Curry" />
         </Field>
 
-        <Field label="Portionen">
-          <Input
-            type="number"
-            inputMode="decimal"
-            value={servings}
-            onChange={(e) => setServings(e.target.value)}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Portionen">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={servings}
+              onChange={(e) => setServings(e.target.value)}
+            />
+          </Field>
+          <Field label="Zeit (Min.)">
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              placeholder="optional"
+            />
+          </Field>
+        </div>
 
         <div>
           <p className="mb-2 text-[13px] font-medium text-muted">Zutaten</p>
@@ -191,6 +218,11 @@ export function RecipeEditorSheet({
         <Button block disabled={saving || !title.trim()} onClick={save} className="mt-1">
           {editRecipe ? 'Speichern' : 'Rezept anlegen'}
         </Button>
+        {editRecipe?.id !== undefined && (
+          <Button variant="danger" block onClick={remove}>
+            Rezept löschen
+          </Button>
+        )}
       </div>
     </BottomSheet>
   );

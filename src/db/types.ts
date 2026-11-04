@@ -99,6 +99,8 @@ export interface OwnRecipe {
   id?: string;
   title: string;
   servings: number;
+  /** Total time in minutes (optional). */
+  minutes?: number;
   ingredients: RecipeIngredient[];
   steps: string[];
   nutritionPerServing?: Nutriments;

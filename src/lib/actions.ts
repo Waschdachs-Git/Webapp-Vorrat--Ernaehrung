@@ -1,5 +1,6 @@
-import { db } from '@/db/database';
+import { classifyWithHints, db } from '@/db/database';
 import { nowISO, todayISO } from './date';
+import { namesMatch } from './match';
 import {
   addNutriments,
   EMPTY_NUTRIMENTS,
@@ -13,6 +14,7 @@ import type {
   MealType,
   Nutriments,
   OwnRecipe,
+  RecipeIngredient,
 } from '@/db/types';
 
 /** Time-of-day based default meal type, used to pre-select the picker. */
@@ -200,6 +202,33 @@ export async function runAutoRestock(): Promise<void> {
   }
 }
 
+/**
+ * Put recipe ingredients on the shopping list, skipping anything that is
+ * already open there. Returns the new entries' ids (for undo).
+ */
+export async function addIngredientsToShoppingList(
+  ingredients: RecipeIngredient[],
+): Promise<string[]> {
+  const open = (await db.shoppingList.toArray()).filter((s) => !s.checked);
+  const added: string[] = [];
+  for (const ing of ingredients) {
+    if (open.some((s) => namesMatch(s.name, ing.name))) continue;
+    const entry = {
+      name: ing.name,
+      category: await classifyWithHints(ing.name),
+      amount: ing.amount > 0 ? ing.amount : undefined,
+      unit: ing.amount > 0 ? ing.unit : undefined,
+      checked: false,
+      source: 'recipe' as const,
+      addedAt: nowISO(),
+    };
+    const id = await db.shoppingList.add(entry);
+    open.push({ ...entry, id });
+    added.push(id);
+  }
+  return added;
+}
+
 /** Give an amount back to stock (used when a diary entry is reduced/removed). */
 export async function restoreInventory(id: string, amount: number): Promise<void> {
   const item = await db.inventory.get(id);
@@ -287,12 +316,6 @@ export async function repeatDiaryItem(
   mealType: MealType,
 ): Promise<string> {
   return logFood({ mealType, item: { ...item } });
-}
-
-function namesMatch(a: string, b: string): boolean {
-  const x = a.trim().toLowerCase();
-  const y = b.trim().toLowerCase();
-  return x === y || x.includes(y) || y.includes(x);
 }
 
 export function isExpiringSoon(item: InventoryItem, days = 3): boolean {
