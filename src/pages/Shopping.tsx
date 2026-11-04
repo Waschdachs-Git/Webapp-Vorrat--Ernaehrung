@@ -1,9 +1,9 @@
 import { type FormEvent, type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, ShoppingCart, Check, RefreshCw } from 'lucide-react';
+import { Plus, ShoppingCart, Check, RefreshCw, ScanLine } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
-import { AddInventorySheet } from '@/components/AddInventorySheet';
+import { PutAwaySheet } from '@/components/PutAwaySheet';
 import { SwipeRow } from '@/components/SwipeRow';
 import { Button, EmptyState, Input, Section, cx } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
@@ -24,7 +24,13 @@ export function Shopping(): ReactNode {
   );
   const [newName, setNewName] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
-  const [restockItem, setRestockItem] = useState<ShoppingItem | null>(null);
+  // Each opening gets a fresh sheet (key); `focus` = opened from one row.
+  const [putAway, setPutAway] = useState<{ open: boolean; key: number; focus?: string }>({
+    open: false,
+    key: 0,
+  });
+  const startPutAway = (focus?: string) =>
+    setPutAway((p) => ({ open: true, key: p.key + 1, focus }));
 
   const open = useMemo(
     () => (items ?? []).filter((i) => !i.checked),
@@ -161,7 +167,7 @@ export function Shopping(): ReactNode {
                             <ShoppingRow
                               item={item}
                               onToggle={() => toggle(item)}
-                              onTakeover={() => setRestockItem(item)}
+                              onTakeover={() => startPutAway(item.id)}
                             />
                           </SwipeRow>
                         </li>
@@ -184,6 +190,9 @@ export function Shopping(): ReactNode {
                   </button>
                 }
               >
+                <Button block className="mb-2 mt-3" onClick={() => startPutAway()}>
+                  <ScanLine size={18} /> Zum Vorrat hinzufügen
+                </Button>
                 <ul>
                   {done.map((item) => (
                     <li key={item.id} className="border-b border-border last:border-b-0">
@@ -191,7 +200,7 @@ export function Shopping(): ReactNode {
                         <ShoppingRow
                           item={item}
                           onToggle={() => toggle(item)}
-                          onTakeover={() => setRestockItem(item)}
+                          onTakeover={() => startPutAway(item.id)}
                         />
                       </SwipeRow>
                     </li>
@@ -203,19 +212,12 @@ export function Shopping(): ReactNode {
         )}
       </div>
 
-      {/* "In den Vorrat übernehmen" -> scan/manual flow with the name prefilled. */}
-      <AddInventorySheet
-        key={restockItem?.id ?? 'none'}
-        open={!!restockItem}
-        prefillName={restockItem?.name}
-        // Remove from the shopping list only after it really landed in stock;
-        // cancelling must not discard the entry.
-        onSaved={() => {
-          if (restockItem?.id !== undefined) {
-            void db.shoppingList.delete(restockItem.id);
-          }
-        }}
-        onClose={() => setRestockItem(null)}
+      {/* Unpacking the bag: scan product after product into stock. */}
+      <PutAwaySheet
+        key={putAway.key}
+        open={putAway.open}
+        focusEntryId={putAway.focus}
+        onClose={() => setPutAway((p) => ({ ...p, open: false }))}
       />
     </div>
   );
@@ -280,7 +282,7 @@ function ShoppingRow({
           onClick={onTakeover}
           className="flex min-h-[40px] shrink-0 items-center text-[14px] font-medium text-accent active:opacity-60"
         >
-          In Vorrat übernehmen
+          Einräumen
         </button>
       )}
     </div>
