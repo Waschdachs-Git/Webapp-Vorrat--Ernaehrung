@@ -7,6 +7,7 @@ import type {
 } from '@/db/types';
 import { daysUntil } from './date';
 import { classifyByName } from './categories';
+import { namesMatch } from './match';
 
 export type RecommendationAction =
   | { type: 'log'; inventoryId: string }
@@ -185,12 +186,6 @@ function isIngredient(name: string, category?: string): boolean {
   if (/(mehl|zucker|honig|salz|hefe|backpulver|stärke)/i.test(name)) return true;
   if (/(^|\s)(öl|butter|olivenöl)/i.test(name) || /öl$/i.test(name)) return true;
   return classifyByName(name) === 'condiments';
-}
-
-function namesMatch(a: string, b: string): boolean {
-  const x = a.trim().toLowerCase();
-  const y = b.trim().toLowerCase();
-  return x === y || x.includes(y) || y.includes(x);
 }
 
 /** "Vollmilch 3,5 %" must not break before the "%" – glue number and unit. */

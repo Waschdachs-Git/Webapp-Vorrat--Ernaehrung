@@ -59,7 +59,7 @@ export function BottomSheet({
                 className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-border"
                 aria-hidden
               />
-              <h2 className="font-serif text-[23px] font-semibold tracking-[-0.01em] text-text">{title}</h2>
+              <h2 className="min-w-0 pr-2 font-serif text-[23px] font-semibold leading-tight tracking-[-0.01em] text-text">{title}</h2>
               <button
                 onClick={onClose}
                 aria-label="Schließen"

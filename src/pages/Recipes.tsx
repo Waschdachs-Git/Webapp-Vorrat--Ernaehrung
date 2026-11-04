@@ -19,6 +19,7 @@ import {
   AddButton,
   EmptyState,
   Input,
+  Section,
   TextTabs,
   cx,
 } from '@/components/ui';
@@ -30,6 +31,7 @@ import {
   type ApiOutcome,
 } from '@/lib/spoonacular';
 import { isExpiringSoon } from '@/lib/actions';
+import { namesMatch } from '@/lib/match';
 import type { OwnRecipe, Profile } from '@/db/types';
 
 type Mode = 'cook' | 'search' | 'own';
@@ -146,11 +148,11 @@ function CookMode({
     return own
       .map((r) => {
         const matched = r.ingredients.filter((ing) =>
-          inStock.some((inv) => nameMatch(inv.name, ing.name)),
+          inStock.some((inv) => namesMatch(inv.name, ing.name)),
         );
         const expiringHit = r.ingredients.some((ing) =>
           inStock.some(
-            (inv) => nameMatch(inv.name, ing.name) && isExpiringSoon(inv),
+            (inv) => namesMatch(inv.name, ing.name) && isExpiringSoon(inv),
           ),
         );
         return {
@@ -322,15 +324,26 @@ function OwnMode({
       />
     );
   }
+  const groups = groupRecipes(own);
   return (
     <div>
-      <ul className="md:columns-2 md:gap-10">
-        {own.map((r) => (
-          <li key={r.id} className="break-inside-avoid border-b border-border">
-            <RecipeRow recipe={r} onOpen={() => onCook(r)} />
-          </li>
+      <div className="flex flex-col gap-9">
+        {groups.map((g) => (
+          <Section
+            key={g.label}
+            title={g.label}
+            action={<span className="tnum text-[13px] text-faint">{g.recipes.length}</span>}
+          >
+            <ul className="md:columns-2 md:gap-10">
+              {g.recipes.map((r) => (
+                <li key={r.id} className="break-inside-avoid border-b border-border">
+                  <RecipeRow recipe={r} onOpen={() => onCook(r)} hideTag={g.tag} />
+                </li>
+              ))}
+            </ul>
+          </Section>
         ))}
-      </ul>
+      </div>
       <button
         type="button"
         onClick={onNew}
@@ -342,6 +355,30 @@ function OwnMode({
   );
 }
 
+const RECIPE_GROUPS = [
+  { label: 'Frühstück', tag: 'frühstück' },
+  { label: 'Hauptgerichte', tag: null },
+  { label: 'Snacks', tag: 'snack' },
+] as const;
+
+/** Own recipes by meal (from the tags), alphabetical within each group. */
+function groupRecipes(
+  recipes: OwnRecipe[],
+): { label: string; tag: string | null; recipes: OwnRecipe[] }[] {
+  const tagged = (r: OwnRecipe, tag: string) =>
+    r.tags.some((t) => t.trim().toLowerCase() === tag);
+  const groupOf = (r: OwnRecipe) =>
+    RECIPE_GROUPS.find((g) => g.tag !== null && tagged(r, g.tag)) ??
+    RECIPE_GROUPS[1];
+  return RECIPE_GROUPS.map((g) => ({
+    label: g.label,
+    tag: g.tag,
+    recipes: recipes
+      .filter((r) => groupOf(r) === g)
+      .sort((a, b) => a.title.localeCompare(b.title, 'de')),
+  })).filter((g) => g.recipes.length > 0);
+}
+
 /**
  * A recipe as a line of type: serif title, one meta line, tags as text.
  * Tapping opens the recipe, where cooking and editing live.
@@ -351,14 +388,19 @@ function RecipeRow({
   onOpen,
   status,
   note,
+  hideTag,
 }: {
   recipe: OwnRecipe;
   onOpen: () => void;
   status?: ReactNode;
   note?: string;
+  /** Tag already said by the surrounding group heading. */
+  hideTag?: string | null;
 }): ReactNode {
+  const tags = recipe.tags.filter((t) => t.trim().toLowerCase() !== hideTag);
   const n = recipe.nutritionPerServing;
   const meta = [
+    recipe.minutes ? `${recipe.minutes} Min.` : null,
     n ? `${Math.round(n.kcal)} kcal` : null,
     n ? `${Math.round(n.protein)} g Protein` : null,
   ].filter(Boolean);
@@ -382,9 +424,9 @@ function RecipeRow({
           )}
           {note && <span className="text-warn"> · {note}</span>}
         </span>
-        {recipe.tags.length > 0 && (
+        {tags.length > 0 && (
           <span className="mt-0.5 block text-[13px] text-faint">
-            {recipe.tags.join(' · ')}
+            {tags.join(' · ')}
           </span>
         )}
       </span>
@@ -605,8 +647,3 @@ function describeFilters(profile: Profile | undefined): string {
   return parts.length ? parts.join(', ') : 'keine';
 }
 
-function nameMatch(a: string, b: string): boolean {
-  const x = a.trim().toLowerCase();
-  const y = b.trim().toLowerCase();
-  return x === y || x.includes(y) || y.includes(x);
-}

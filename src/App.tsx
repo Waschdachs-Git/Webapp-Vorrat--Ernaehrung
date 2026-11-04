@@ -88,6 +88,13 @@ export function App(): ReactNode {
 function AppShell(): ReactNode {
   const location = useLocation();
   useEffect(prefetchPages, []);
+  useEffect(() => {
+    // Starter recipes, added once per account. Loaded on demand so the data
+    // stays out of the main bundle.
+    import('@/db/recipePack')
+      .then((m) => m.ensureRecipePack())
+      .catch((err) => console.error('Rezeptsammlung nicht angelegt:', err));
+  }, []);
 
   return (
     <UndoToastProvider>

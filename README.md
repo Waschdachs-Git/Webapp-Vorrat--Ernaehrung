@@ -13,14 +13,17 @@ Details zu Produkt und Design: [`PRODUCT.md`](./PRODUCT.md) ·
 
 ## Features
 
-- **Heute** – Kalorien-Ring, Makro-Balken, „verbleibend heute", Mahlzeiten,
+- **Heute** – übrige Kalorien, Makro-Balken, Mahlzeiten,
   Empfehlungen (Tagesziel füllen / Ablaufendes verwerten / Abwechslung).
 - **Vorrat** – Barcode-Scan (Open Food Facts, kein Key) oder manuell, Lagerorte,
   MHD-/„wenig"-Badges, Grundnahrungsmittel mit Mindestbestand.
 - **Einkauf** – manuell + Auto-Nachkauf, Abhaken per Swipe, „in den Vorrat
   übernehmen".
 - **Rezepte** – „Was kann ich kochen?", Spoonacular-Suche (Profil-Filter),
-  eigene deutsche Rezepte, „Gekocht"-Buchung.
+  eigene deutsche Rezepte, „Gekocht"-Buchung, fehlende Zutaten mit einem Tipp
+  auf die Einkaufsliste. Startet mit einer Sammlung von 27 proteinreichen
+  Alltagsrezepten (`src/db/recipePack.ts`, einmalig pro Konto angelegt,
+  danach frei bearbeit- und löschbar).
 - **Profil** – Onboarding, Gesundheits-Berechnung (Mifflin-St Jeor), Tagesziele
   (überschreibbar), Gewichtsverlauf, Backup (JSON-Export/-Import).
 
