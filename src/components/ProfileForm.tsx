@@ -1,6 +1,14 @@
 import { type ReactNode, useState } from 'react';
 import { Button, Field, Input, Select, SegmentedControl, cx } from './ui';
 import { ACTIVITY_LABELS } from '@/lib/health';
+import { ageFromBirthdate, todayISO } from '@/lib/date';
+import { parseDecimal } from '@/lib/format';
+import { MAX_WEIGHT_KG, MIN_WEIGHT_KG, isPlausibleWeight } from '@/lib/weight';
+
+const MIN_HEIGHT_CM = 100;
+const MAX_HEIGHT_CM = 250;
+/** Faster than this is neither healthy nor a sensible calorie target. */
+const MAX_RATE_KG_PER_WEEK = 1.5;
 import type {
   ActivityLevel,
   Goal,
@@ -58,11 +66,11 @@ export function draftToProfile(d: ProfileDraft, id: string): Profile {
     name: d.name.trim() || 'Ich',
     sex: d.sex ?? 'd',
     birthdate: d.birthdate,
-    heightCm: parseFloat(d.heightCm) || 0,
-    weightKg: parseFloat(d.weightKg) || 0,
+    heightCm: parseDecimal(d.heightCm),
+    weightKg: parseDecimal(d.weightKg),
     activityLevel: d.activityLevel,
     goal: d.goal,
-    targetRateKgPerWeek: parseFloat(d.targetRateKgPerWeek) || 0,
+    targetRateKgPerWeek: parseDecimal(d.targetRateKgPerWeek),
     allergies: splitList(d.allergies),
     dietPrefs: splitList(d.dietPrefs),
   };
@@ -96,23 +104,39 @@ export function ProfileForm({
   inSheet?: boolean;
 }): ReactNode {
   const [submitting, setSubmitting] = useState(false);
-  // Say what is missing instead of showing a silently disabled button.
+  const [error, setError] = useState<string | null>(null);
+  // Say what is missing instead of showing a silently disabled button. The
+  // ranges catch typing mistakes: these numbers drive the calorie targets.
+  const height = parseDecimal(draft.heightCm);
+  const weight = parseDecimal(draft.weightKg);
+  const rate = parseDecimal(draft.targetRateKgPerWeek);
+  const age = draft.birthdate ? ageFromBirthdate(draft.birthdate) : NaN;
   const missing = [
     draft.sex === null && 'Geschlecht',
-    !draft.birthdate && 'Geburtsdatum',
-    !(parseFloat(draft.heightCm) > 0) && 'Größe',
-    !(parseFloat(draft.weightKg) > 0) && 'Gewicht',
+    !draft.birthdate
+      ? 'Geburtsdatum'
+      : (draft.birthdate > todayISO() || !(age >= 0 && age <= 120)) && 'gültiges Geburtsdatum',
+    draft.heightCm.trim() === ''
+      ? 'Größe'
+      : !(height >= MIN_HEIGHT_CM && height <= MAX_HEIGHT_CM) &&
+        `Größe (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`,
+    draft.weightKg.trim() === ''
+      ? 'Gewicht'
+      : !isPlausibleWeight(weight) && `Gewicht (${MIN_WEIGHT_KG}–${MAX_WEIGHT_KG} kg)`,
+    draft.goal !== 'maintain' &&
+      !(rate > 0 && rate <= MAX_RATE_KG_PER_WEEK) &&
+      `Zielrate (bis ${MAX_RATE_KG_PER_WEEK.toLocaleString('de-DE')} kg pro Woche)`,
   ].filter(Boolean) as string[];
-  const valid =
-    draft.sex !== null &&
-    draft.birthdate &&
-    parseFloat(draft.heightCm) > 0 &&
-    parseFloat(draft.weightKg) > 0;
+  const valid = missing.length === 0;
 
   const submit = async () => {
     setSubmitting(true);
+    setError(null);
     try {
       await onSubmit();
+    } catch (err) {
+      console.error('Profil speichern fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
     } finally {
       setSubmitting(false);
     }
@@ -138,6 +162,7 @@ export function ProfileForm({
       <Field label="Geburtsdatum">
         <Input
           type="date"
+          max={todayISO()}
           value={draft.birthdate}
           onChange={(e) => set('birthdate', e.target.value)}
         />
@@ -228,6 +253,11 @@ export function ProfileForm({
         {missing.length > 0 && (
           <p className="mb-2 text-center text-[12.5px] text-muted">
             Noch offen: {missing.join(', ')}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mb-2 text-center text-[13px] text-danger">
+            {error}
           </p>
         )}
         <Button block disabled={!valid || submitting} onClick={submit}>

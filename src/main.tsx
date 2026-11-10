@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { startAppUpdates } from './lib/appUpdate';
 // Self-hosted so the app keeps its typography offline.
 import '@fontsource-variable/inter';
 import '@fontsource-variable/newsreader/opsz.css';
@@ -12,8 +14,12 @@ if (!rootEl) throw new Error('Root element #root not found');
 
 createRoot(rootEl).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );
+
+startAppUpdates();

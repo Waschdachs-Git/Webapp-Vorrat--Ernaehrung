@@ -28,15 +28,19 @@ function LoginSheet(): ReactNode {
 
   const text = ui ? copyFor(ui.type, ui.title, ui.submitLabel) : null;
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!ui) return;
+  const send = (current: Record<string, string>) => {
+    if (!ui || busy) return;
     setBusy(true);
     ui.onSubmit(
       Object.fromEntries(
-        Object.keys(ui.fields ?? {}).map((k) => [k, (values[k] ?? '').trim()]),
+        Object.keys(ui.fields ?? {}).map((k) => [k, normalize(k, current[k] ?? '')]),
       ),
     );
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    send(values);
   };
 
   return (
@@ -70,14 +74,24 @@ function LoginSheet(): ReactNode {
                 key={name}
                 autoFocus={i === 0}
                 type={isEmail ? 'email' : 'text'}
-                inputMode={isOtp ? 'numeric' : isEmail ? 'email' : undefined}
+                // The code is letters *and* digits (e.g. "7ERE6YGJ"), so it
+                // needs the full keyboard – a numeric pad locks the user out.
+                inputMode={isEmail ? 'email' : 'text'}
                 autoComplete={isEmail ? 'email' : isOtp ? 'one-time-code' : 'off'}
-                autoCapitalize="none"
-                placeholder={isEmail ? 'name@beispiel.de' : isOtp ? 'Code' : field.placeholder}
+                autoCapitalize={isOtp ? 'characters' : 'none'}
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder={isEmail ? 'name@beispiel.de' : isOtp ? '8-stelliger Code' : field.placeholder}
                 aria-label={isEmail ? 'E-Mail' : isOtp ? 'Code' : field.label ?? name}
                 value={values[name] ?? ''}
-                onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
-                className={isOtp ? 'text-center text-[22px] tracking-[0.3em]' : undefined}
+                onChange={(e) => {
+                  const value = isOtp ? normalize('otp', e.target.value) : e.target.value;
+                  const next = { ...values, [name]: value };
+                  setValues(next);
+                  // Complete code (typed or pasted): no extra tap needed.
+                  if (isOtp && value.length === OTP_LENGTH) send(next);
+                }}
+                className={isOtp ? 'text-center text-[22px] tracking-[0.2em] placeholder:text-[15px] placeholder:tracking-normal' : undefined}
               />
             );
           })}
@@ -103,6 +117,15 @@ function LoginSheet(): ReactNode {
   );
 }
 
+const OTP_LENGTH = 8;
+
+/** What the server expects: lower-case address, upper-case code, no spaces. */
+function normalize(field: string, value: string): string {
+  if (field === 'email') return value.trim().toLowerCase();
+  if (field === 'otp') return value.replace(/\s+/g, '').toUpperCase();
+  return value.trim();
+}
+
 function copyFor(
   type: string,
   title: string,
@@ -117,7 +140,11 @@ function copyFor(
         submit: 'Code senden',
       };
     case 'otp':
-      return { title: 'Code eingeben', submit: 'Anmelden' };
+      return {
+        title: 'Code eingeben',
+        intro: 'Der Code besteht aus 8 Zeichen – Buchstaben und Ziffern.',
+        submit: 'Anmelden',
+      };
     case 'logout-confirmation':
       return { title: 'Abmelden?', submit: 'Trotzdem abmelden' };
     case 'message-alert':

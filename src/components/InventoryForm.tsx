@@ -1,7 +1,7 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { Field, Input, Select, SegmentedControl } from './ui';
 import { classifyWithHints } from '@/db/database';
-import { unitLabel } from '@/lib/format';
+import { unitLabel, parseDecimal } from '@/lib/format';
 import type { OffProduct } from '@/lib/openfoodfacts';
 import {
   CATEGORY_LABELS,
@@ -129,17 +129,17 @@ export function itemFromDraft(draft: Draft, addedAt: string): Omit<InventoryItem
     brand: draft.brand.trim() || undefined,
     barcode: draft.barcode,
     location: draft.location,
-    amount: parseFloat(draft.amount) || 0,
+    amount: parseDecimal(draft.amount),
     unit: draft.unit,
     gramsPerPiece:
       draft.unit === 'pcs' && draft.gramsPerPiece
-        ? parseFloat(draft.gramsPerPiece)
+        ? parseDecimal(draft.gramsPerPiece)
         : undefined,
     category: draft.category,
     nutrimentsPer100: parseNutriments(draft.nutriments),
     bestBefore: draft.bestBefore || undefined,
     isStaple: draft.isStaple,
-    minStock: draft.isStaple && draft.minStock ? parseFloat(draft.minStock) : undefined,
+    minStock: draft.isStaple && draft.minStock ? parseDecimal(draft.minStock) : undefined,
     addedAt,
   };
 }
@@ -148,10 +148,10 @@ function parseNutriments(n: Draft['nutriments']): Nutriments | undefined {
   const hasAny = n.kcal || n.protein || n.carbs || n.fat;
   if (!hasAny) return undefined;
   return {
-    kcal: parseFloat(n.kcal) || 0,
-    protein: parseFloat(n.protein) || 0,
-    carbs: parseFloat(n.carbs) || 0,
-    fat: parseFloat(n.fat) || 0,
+    kcal: parseDecimal(n.kcal),
+    protein: parseDecimal(n.protein),
+    carbs: parseDecimal(n.carbs),
+    fat: parseDecimal(n.fat),
   };
 }
 

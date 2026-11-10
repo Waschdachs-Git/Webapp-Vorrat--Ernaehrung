@@ -13,7 +13,8 @@ Details zu Produkt und Design: [`PRODUCT.md`](./PRODUCT.md) ·
 
 ## Features
 
-- **Heute** – übrige Kalorien, Makro-Balken, Mahlzeiten,
+- **Heute** – übrige Kalorien, Makro-Balken, Mahlzeiten (der Tag wechselt um
+  Mitternacht auch bei offener App),
   Empfehlungen (Tagesziel füllen / Ablaufendes verwerten / Abwechslung).
 - **Vorrat** – Barcode-Scan (Open Food Facts, kein Key) oder manuell, Lagerorte,
   MHD-/„wenig"-Badges, Grundnahrungsmittel mit Mindestbestand.
@@ -51,6 +52,7 @@ Weitere Skripte:
 npm run build     # Typecheck + Produktions-Build nach dist/
 npm run preview   # gebauten Build lokal ansehen
 npm run typecheck # nur TypeScript prüfen
+npm test          # Unit-Tests (Vitest): Zutaten-Abgleich, Import-Prüfung, Packungsgrößen
 ```
 
 > **Kamera/Barcode** braucht HTTPS. Lokal reicht `localhost`; auf dem iPad muss
@@ -63,7 +65,8 @@ Die Rezeptsuche nutzt Spoonacular. Hol dir einen **kostenlosen** API-Key auf
 **Profil → Einstellungen → Spoonacular API-Key** ein. Ohne Key bleibt die App
 voll nutzbar; nur die Spoonacular-Funktionen sind ausgegraut. Der Key liegt in
 den Einstellungen der App (keine Secrets im Code) und wird bei aktiver
-Synchronisierung mit dem eigenen Konto abgeglichen.
+Synchronisierung mit dem eigenen Konto abgeglichen. In Backup-Dateien steht er
+nicht; ein Import lässt den gespeicherten Key unangetastet.
 
 ## Deploy (HTTPS automatisch)
 
@@ -106,7 +109,10 @@ Zugriff gibt es nur mit Login, und nur freigegebene Origins dürfen verbinden.
   Code). Die Daten des Geräts wandern dabei ins Konto.
 - **Zweites Gerät:** im Onboarding „Anmelden" – oder in den Einstellungen
   „Daten von dort laden", wenn das Gerät schon eigene Daten hat (die werden
-  dann ersetzt).
+  dann ersetzt). Die Gerätedaten werden dafür zwischengespeichert und kommen
+  zurück, falls die Anmeldung abgebrochen wird (`src/db/loginStash.ts`).
+  Solange nach einer Anmeldung die Kontodaten noch laden, zeigt das Onboarding
+  kein Profilformular – ein neu angelegtes Profil würde das im Konto ersetzen.
 - **Neue Domain freigeben:** `npx dexie-cloud whitelist https://…` (braucht die
   `dexie-cloud.key` des Datenbank-Owners – nie committen).
 - **Nutzer dauerhaft freischalten:** Im Free-Plan synchronisieren neue Nutzer
@@ -116,9 +122,29 @@ Zugriff gibt es nur mit Login, und nur freigegebene Origins dürfen verbinden.
 Beim ersten Start nach dem Update zieht die App die Daten aus der alten lokalen
 Datenbank automatisch in die neue (String-IDs, Verweise werden umgeschrieben).
 
+## Updates
+
+Der Service Worker aktiviert eine neue Version sofort (`skipWaiting` +
+`clientsClaim`) und räumt die Dateien der alten weg. Damit eine noch laufende
+Seite nicht auf fehlende Dateien stößt, lädt die App sich selbst auf die neue
+Version – aber nur, wenn das nichts kostet: direkt nach dem Start oder während
+sie im Hintergrund liegt. Ist ein Dialog offen oder steht Text in einem Feld,
+wartet sie und zeigt stattdessen „Neue Version bereit" (`src/lib/appUpdate.ts`).
+Die laufende Version steht unten in den Einstellungen, dort lässt sich auch
+nach einem Update suchen.
+
+Stürzt eine Seite trotzdem ab, zeigt eine Fehlergrenze (`ErrorBoundary`) eine
+Meldung mit „App neu laden" statt eines weißen Bildschirms; die Navigation
+bleibt benutzbar.
+
 ## Datensicherung
 
 Ohne Anmeldung liegen alle Daten ausschließlich im Browser des Geräts. **Regelmäßig
 exportieren** (Profil → Einstellungen → Backup → Export). Das schützt vor
 Datenverlust, falls die Safari-Daten gelöscht werden. Wiederherstellen über
 Import.
+
+Ein Import ersetzt alle Daten. Die Datei wird vorher vollständig geprüft
+(`src/db/sanitize.ts`): unbrauchbare Zeilen werden übersprungen und gezählt,
+eine Datei, die kein Backup dieser App ist, wird abgelehnt, bevor etwas
+gelöscht wird.

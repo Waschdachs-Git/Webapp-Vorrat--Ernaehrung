@@ -10,7 +10,8 @@ import { lookupBarcode } from '@/lib/openfoodfacts';
 import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
 import type { InventoryItem, MealType, Nutriments, Unit } from '@/db/types';
 import { useUndo } from './UndoToast';
-import { formatAmount, relativeBestBefore, unitLabel } from '@/lib/format';
+import { isUsableEntry } from '@/hooks/useToday';
+import { formatAmount, relativeBestBefore, unitLabel, parseDecimal } from '@/lib/format';
 import { daysUntil } from '@/lib/date';
 
 type Source = 'inventory' | 'foods' | 'free' | 'scan';
@@ -25,6 +26,8 @@ interface Picked {
   gramsPerPiece?: number;
   /** Amount logged last time, used as the default portion. */
   lastAmount?: number;
+  /** What is left in stock (inventory items only). */
+  stock?: number;
 }
 
 /** Fallback weight per piece when the item has none stored yet. */
@@ -61,6 +64,7 @@ export function LogFoodSheet({
           sourceType: 'inventory',
           refId: preset.id,
           gramsPerPiece: preset.gramsPerPiece,
+          stock: preset.amount,
         }
       : null,
   );
@@ -72,7 +76,7 @@ export function LogFoodSheet({
   const lastAmounts = useLiveQuery(async () => {
     const recent = await db.diary.orderBy('datetime').reverse().limit(150).toArray();
     const map = new Map<string, number>();
-    for (const e of recent) {
+    for (const e of recent.filter(isUsableEntry)) {
       for (const it of e.items) {
         const k = it.name.toLowerCase();
         if (!map.has(k)) map.set(k, it.amount);
@@ -190,6 +194,7 @@ export function LogFoodSheet({
                             refId: i.id,
                             gramsPerPiece: i.gramsPerPiece,
                             lastAmount: lastAmounts?.get(i.name.toLowerCase()),
+                            stock: i.amount,
                           })
                         }
                       />
@@ -217,9 +222,16 @@ export function LogFoodSheet({
                       }
                     />
                   ))}
+              {source === 'foods' && filteredFoods.length === 0 && (
+                <p className="px-1 py-6 text-center text-[13px] text-faint">
+                  Nichts gefunden. Über „Manuell“ lässt sich alles eintragen.
+                </p>
+              )}
               {source === 'inventory' && inventoryWithNutrition.length === 0 && (
                 <p className="px-1 py-6 text-center text-[13px] text-faint">
-                  Keine Vorratsartikel mit Nährwerten. Über „Standard“ oder „Frei“ loggen.
+                  {query.trim()
+                    ? 'Nichts Passendes im Vorrat. Unter „Lebensmittel“ suchen oder „Manuell“ eintragen.'
+                    : 'Noch keine Vorratsartikel mit Nährwerten. Über „Lebensmittel“ oder „Manuell“ loggen.'}
                 </p>
               )}
             </div>
@@ -297,42 +309,56 @@ function PortionStep({
 }): ReactNode {
   const isPcs = picked.unit === 'pcs';
   const presets = isPcs ? [1, 2, 3] : [50, 100, 150, 200];
-  const [amount, setAmount] = useState<number>(picked.lastAmount ?? (isPcs ? 1 : 100));
-  const [gramsPerPiece, setGramsPerPiece] = useState<number>(
-    picked.gramsPerPiece ?? DEFAULT_GRAMS_PER_PIECE,
+  // Kept as typed text: mapping to a number on every keystroke makes "0,5"
+  // impossible to enter (the leading 0 parses to 0 and clears the field).
+  const [amountText, setAmountText] = useState(String(picked.lastAmount ?? (isPcs ? 1 : 100)));
+  const [gramsText, setGramsText] = useState(
+    String(picked.gramsPerPiece ?? DEFAULT_GRAMS_PER_PIECE),
   );
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const showUndo = useUndo();
 
+  const amount = parseDecimal(amountText);
+  const gramsPerPiece = parseDecimal(gramsText);
   // Nutriments are per 100 g, so pieces have to be converted to grams first.
   const nutritionGrams = isPcs ? amount * gramsPerPiece : amount;
   const scaled = scaleNutriments(picked.per100, nutritionGrams);
+  const stock = picked.sourceType === 'inventory' ? picked.stock : undefined;
+  const beyondStock = stock !== undefined && amount > stock;
 
   const save = async () => {
     setSaving(true);
-    // Remember the weight per piece on the item so it is pre-filled next time.
-    if (isPcs && picked.sourceType === 'inventory' && picked.refId !== undefined) {
-      if (gramsPerPiece !== picked.gramsPerPiece) {
-        await db.inventory.update(picked.refId, { gramsPerPiece });
+    setError(null);
+    try {
+      // Remember the weight per piece on the item so it is pre-filled next time.
+      if (isPcs && picked.sourceType === 'inventory' && picked.refId !== undefined) {
+        if (gramsPerPiece !== picked.gramsPerPiece) {
+          await db.inventory.update(picked.refId, { gramsPerPiece });
+        }
       }
+      const entryId = await logFood({
+        mealType: meal,
+        item: diaryItemFromPer100({
+          name: picked.name,
+          amount, // in the item's own unit -> what gets subtracted from stock
+          unit: picked.unit,
+          per100: picked.per100,
+          sourceType: picked.sourceType,
+          refId: picked.refId,
+          nutritionAmount: nutritionGrams,
+        }),
+      });
+      // Confirmation doubles as a safety net against mis-taps.
+      showUndo(`${picked.name} gebucht · ${Math.round(scaled.kcal)} kcal`, () =>
+        deleteDiaryItem(entryId, 0),
+      );
+      onDone();
+    } catch (err) {
+      console.error('Loggen fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+      setSaving(false);
     }
-    const entryId = await logFood({
-      mealType: meal,
-      item: diaryItemFromPer100({
-        name: picked.name,
-        amount, // in the item's own unit -> what gets subtracted from stock
-        unit: picked.unit,
-        per100: picked.per100,
-        sourceType: picked.sourceType,
-        refId: picked.refId,
-        nutritionAmount: nutritionGrams,
-      }),
-    });
-    // Confirmation doubles as a safety net against mis-taps.
-    showUndo(`${picked.name} gebucht · ${Math.round(scaled.kcal)} kcal`, () =>
-      deleteDiaryItem(entryId, 0),
-    );
-    onDone();
   };
 
   return (
@@ -343,27 +369,30 @@ function PortionStep({
         <Input
           type="number"
           inputMode="decimal"
-          value={amount || ''}
-          onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+          min="0"
+          step="any"
+          value={amountText}
+          onChange={(e) => setAmountText(e.target.value)}
           autoFocus
         />
       </Field>
       <div className="flex flex-wrap gap-2">
         {presets.map((p) => (
-          <button
+          <PresetChip
             key={p}
-            type="button"
-            onClick={() => setAmount(p)}
-            className={cx(
-              'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-              amount === p
-                ? 'bg-accent text-white dark:text-bg'
-                : 'bg-surface-2 text-muted',
-            )}
-          >
-            {formatAmount(p, picked.unit)}
-          </button>
+            active={amount === p}
+            onClick={() => setAmountText(String(p))}
+            label={formatAmount(p, picked.unit)}
+          />
         ))}
+        {stock !== undefined && stock > 0 && !presets.includes(stock) && (
+          // Finishing a package is the most common "odd" amount.
+          <PresetChip
+            active={amount === stock}
+            onClick={() => setAmountText(String(stock))}
+            label={`Rest: ${formatAmount(stock, picked.unit)}`}
+          />
+        )}
       </div>
 
       {isPcs && (
@@ -374,23 +403,34 @@ function PortionStep({
           <Input
             type="number"
             inputMode="decimal"
-            value={gramsPerPiece || ''}
-            onChange={(e) => setGramsPerPiece(parseFloat(e.target.value) || 0)}
+            min="0"
+            step="any"
+            value={gramsText}
+            onChange={(e) => setGramsText(e.target.value)}
           />
         </Field>
       )}
 
       <div className="grid grid-cols-4 gap-2 rounded-2xl bg-surface-2 p-3 text-center">
-        <Stat label="kcal" value={Math.round(scaled.kcal)} />
-        <Stat label="Protein" value={`${scaled.protein} g`} />
-        <Stat label="Kohlenh." value={`${scaled.carbs} g`} />
-        <Stat label="Fett" value={`${scaled.fat} g`} />
+        <Stat label="kcal" value={Math.round(scaled.kcal).toLocaleString('de-DE')} />
+        <Stat label="Protein" value={`${scaled.protein.toLocaleString('de-DE')} g`} />
+        <Stat label="Kohlenh." value={`${scaled.carbs.toLocaleString('de-DE')} g`} />
+        <Stat label="Fett" value={`${scaled.fat.toLocaleString('de-DE')} g`} />
       </div>
 
       {picked.sourceType === 'inventory' && (
-        <p className="text-[12px] text-faint">
-          Wird gebucht und vom Vorrat abgezogen
-          {isPcs ? ` (entspricht ${Math.round(nutritionGrams)} g).` : '.'}
+        <p className={cx('text-[12.5px]', beyondStock ? 'text-warn' : 'text-faint')}>
+          {beyondStock && stock !== undefined
+            ? `Im Vorrat sind nur noch ${formatAmount(stock, picked.unit)} – gebucht wird die ganze Menge, der Vorrat steht danach auf 0.`
+            : `Wird gebucht und vom Vorrat abgezogen${
+                stock !== undefined ? ` (${formatAmount(stock, picked.unit)} da)` : ''
+              }${isPcs ? ` – entspricht ${Math.round(nutritionGrams)} g.` : '.'}`}
+        </p>
+      )}
+
+      {error && (
+        <p role="alert" className="text-[13.5px] text-danger">
+          {error}
         </p>
       )}
 
@@ -401,12 +441,36 @@ function PortionStep({
         <Button
           block
           onClick={save}
-          disabled={saving || amount <= 0 || (isPcs && gramsPerPiece <= 0)}
+          disabled={saving || !(amount > 0) || (isPcs && !(gramsPerPiece > 0))}
         >
           Loggen
         </Button>
       </div>
     </div>
+  );
+}
+
+function PresetChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cx(
+        'tnum min-h-[36px] rounded-full px-3.5 text-[13px] font-medium transition-colors',
+        active ? 'bg-accent text-white dark:text-bg' : 'bg-surface-2 text-muted',
+      )}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -450,10 +514,10 @@ function FreePick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
             name: name.trim(),
             unit: 'g',
             per100: {
-              kcal: parseFloat(per100.kcal) || 0,
-              protein: parseFloat(per100.protein) || 0,
-              carbs: parseFloat(per100.carbs) || 0,
-              fat: parseFloat(per100.fat) || 0,
+              kcal: parseDecimal(per100.kcal),
+              protein: parseDecimal(per100.protein),
+              carbs: parseDecimal(per100.carbs),
+              fat: parseDecimal(per100.fat),
             },
             sourceType: 'custom',
           })
@@ -476,11 +540,29 @@ function ScanPick({
 
   const handle = async (code: string) => {
     setStatus('loading');
+    // In stock under this barcode? Then log from stock, so the amount is
+    // subtracted there – and it works without a connection.
+    const inStock = (await db.inventory.where('barcode').equals(code).toArray())
+      .filter((i) => i.amount > 0 && i.nutrimentsPer100)
+      .sort((a, b) => (a.bestBefore ?? '9999').localeCompare(b.bestBefore ?? '9999'))[0];
+    if (inStock?.nutrimentsPer100) {
+      onPicked({
+        name: inStock.name,
+        unit: inStock.unit,
+        per100: inStock.nutrimentsPer100,
+        sourceType: 'inventory',
+        refId: inStock.id,
+        gramsPerPiece: inStock.gramsPerPiece,
+        stock: inStock.amount,
+      });
+      return;
+    }
     const res = await lookupBarcode(code);
     if (res.status === 'found' && res.product.nutrimentsPer100) {
       onPicked({
         name: res.product.name,
-        unit: 'g',
+        // Drinks are measured in ml; the package size tells which it is.
+        unit: res.product.packageSize?.unit === 'ml' ? 'ml' : 'g',
         per100: res.product.nutrimentsPer100,
         sourceType: 'barcode',
       });

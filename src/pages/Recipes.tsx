@@ -24,6 +24,7 @@ import {
   cx,
 } from '@/components/ui';
 import { useSettings } from '@/hooks/useSettings';
+import { useTodayISO } from '@/hooks/useDay';
 import {
   SpoonacularClient,
   type RecipeHit,
@@ -31,7 +32,7 @@ import {
   type ApiOutcome,
 } from '@/lib/spoonacular';
 import { isExpiringSoon } from '@/lib/actions';
-import { namesMatch } from '@/lib/match';
+import { isSameFood } from '@/lib/match';
 import type { OwnRecipe, Profile } from '@/db/types';
 
 type Mode = 'cook' | 'search' | 'own';
@@ -137,6 +138,8 @@ function CookMode({
 }): ReactNode {
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const settings = useSettings();
+  // "Uses up what expires" depends on the date; follow the day change.
+  useTodayISO();
   const [spoon, setSpoon] = useState<RecipeHit[] | null>(null);
   const [spoonState, setSpoonState] = useState<'idle' | 'loading' | string>('idle');
 
@@ -148,11 +151,11 @@ function CookMode({
     return own
       .map((r) => {
         const matched = r.ingredients.filter((ing) =>
-          inStock.some((inv) => namesMatch(inv.name, ing.name)),
+          inStock.some((inv) => isSameFood(inv, ing.name)),
         );
         const expiringHit = r.ingredients.some((ing) =>
           inStock.some(
-            (inv) => namesMatch(inv.name, ing.name) && isExpiringSoon(inv),
+            (inv) => isSameFood(inv, ing.name) && isExpiringSoon(inv),
           ),
         );
         return {
@@ -510,13 +513,17 @@ function SpoonacularDetailSheet({
   const settings = useSettings();
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | string>('idle');
-  const [savedMsg, setSavedMsg] = useState(false);
+  // Saved once per opened recipe – repeated taps must not create copies.
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // Load the recipe detail whenever the sheet opens for a new id.
   useEffect(() => {
     if (id === null) return;
     let cancelled = false;
     setDetail(null);
+    setSaved(false);
+    setSaveError(false);
     setState('loading');
     new SpoonacularClient(settings.spoonacularApiKey)
       .recipeInformation(id)
@@ -535,7 +542,7 @@ function SpoonacularDetailSheet({
   }, [id, settings.spoonacularApiKey]);
 
   const saveAsOwn = async () => {
-    if (!detail) return;
+    if (!detail || saved) return;
     const recipe: Omit<OwnRecipe, 'id'> = {
       title: detail.title,
       servings: detail.servings || 1,
@@ -549,9 +556,14 @@ function SpoonacularDetailSheet({
       nutritionPerServing: detail.nutritionPerServing,
       imageUrl: detail.image,
     };
-    await db.recipesOwn.add(recipe as OwnRecipe);
-    setSavedMsg(true);
-    window.setTimeout(() => setSavedMsg(false), 1500);
+    setSaveError(false);
+    try {
+      await db.recipesOwn.add(recipe as OwnRecipe);
+      setSaved(true);
+    } catch (err) {
+      console.error('Rezept speichern fehlgeschlagen:', err);
+      setSaveError(true);
+    }
   };
 
   return (
@@ -612,10 +624,15 @@ function SpoonacularDetailSheet({
                 <ExternalLink size={16} /> Original
               </a>
             )}
-            <Button block onClick={saveAsOwn}>
-              {savedMsg ? 'Gespeichert' : 'Als Rezept speichern'}
+            <Button block onClick={saveAsOwn} disabled={saved}>
+              {saved ? 'In „Meine Rezepte“ gespeichert' : 'Als Rezept speichern'}
             </Button>
           </div>
+          {saveError && (
+            <p role="alert" className="text-[13.5px] text-danger">
+              Konnte nicht gespeichert werden. Bitte noch einmal versuchen.
+            </p>
+          )}
         </div>
       ) : null}
     </BottomSheet>

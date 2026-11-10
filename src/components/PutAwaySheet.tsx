@@ -17,9 +17,9 @@ import {
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
 import { nowISO } from '@/lib/date';
-import { formatAmount } from '@/lib/format';
-import { namesMatch } from '@/lib/match';
-import type { InventoryItem, ShoppingItem } from '@/db/types';
+import { formatAmount, parseDecimal } from '@/lib/format';
+import { namesMatch, sharesFoodWord } from '@/lib/match';
+import type { InventoryItem, ShoppingItem, Unit } from '@/db/types';
 
 type Step = 'scan' | 'form';
 
@@ -51,6 +51,7 @@ export function PutAwaySheet({
   const [existing, setExisting] = useState<InventoryItem | null>(null);
   const [addUp, setAddUp] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [last, setLast] = useState<{ name: string; undo: () => Promise<void> } | null>(null);
 
   const byName = (a: ShoppingItem, b: ShoppingItem) => a.name.localeCompare(b.name, 'de');
@@ -70,9 +71,13 @@ export function PutAwaySheet({
   const handleScan = async (code: string) => {
     setLast(null);
     setSearching(true);
-    const [res, known] = await Promise.all([lookupBarcode(code), findExisting(code)]);
-    setSearching(false);
+    const [res, byBarcode] = await Promise.all([lookupBarcode(code), findExisting(code)]);
     const product = res.status === 'found' ? res.product : undefined;
+    const entry =
+      focusEntry ?? bestEntry(byBarcode?.name ?? product?.name ?? '', candidates);
+    // Restocking a staple with another brand still belongs to that staple.
+    const known = byBarcode ?? (await linkedItem(entry));
+    setSearching(false);
 
     let next: Draft;
     if (known) {
@@ -92,8 +97,12 @@ export function PutAwaySheet({
     } else {
       next = { ...EMPTY_DRAFT, barcode: code, ...(focusEntry ? fromEntry(focusEntry) : {}) };
     }
+    if (!known) next = { ...next, ...stapleFromEntry(entry, next.unit) };
+    // No package size from the product data: the planned amount is a start.
+    if (!next.amount && entry?.amount !== undefined && (entry.unit ?? next.unit) === next.unit) {
+      next.amount = String(entry.amount);
+    }
 
-    const entry = focusEntry ?? bestEntry(next.name, candidates);
     showForm(
       next,
       known,
@@ -113,7 +122,7 @@ export function PutAwaySheet({
 
   const startFromEntry = async (entry: ShoppingItem) => {
     setLast(null);
-    const known = await findExisting(undefined, entry.name);
+    const known = (await linkedItem(entry)) ?? (await findExisting(undefined, entry.name));
     if (known) {
       // Keep the stock item's unit; the planned amount only fits if it matches.
       const fits = entry.amount !== undefined && (entry.unit ?? known.unit) === known.unit;
@@ -126,12 +135,8 @@ export function PutAwaySheet({
       return;
     }
     const category = entry.category ?? (await classifyWithHints(entry.name));
-    showForm(
-      { ...EMPTY_DRAFT, ...fromEntry(entry), category, location: guessLocation(entry.name, category) },
-      undefined,
-      entry,
-      null,
-    );
+    const base = { ...EMPTY_DRAFT, ...fromEntry(entry), category, location: guessLocation(entry.name, category) };
+    showForm({ ...base, ...stapleFromEntry(entry, base.unit) }, undefined, entry, null);
   };
 
   const startBlank = () => {
@@ -147,40 +152,55 @@ export function PutAwaySheet({
 
   const save = async () => {
     setSaving(true);
+    setError(null);
     const fresh = itemFromDraft(draft, nowISO());
     const entry = candidates.find((s) => s.id === entryId);
+    const mergeId = addUp && existing?.unit === fresh.unit ? existing.id : undefined;
 
-    let undoStock: () => Promise<unknown>;
-    if (existing?.id !== undefined && addUp && existing.unit === fresh.unit) {
-      const previous = { ...existing };
-      // The older package runs out first, so its date stays the one to watch.
-      const oldDate = existing.amount > 0 ? existing.bestBefore : undefined;
-      await db.inventory.update(existing.id, {
-        ...fresh,
-        addedAt: existing.addedAt,
-        amount: Math.round((existing.amount + fresh.amount) * 10) / 10,
-        bestBefore: earliest(oldDate, fresh.bestBefore),
-      });
-      undoStock = () => db.inventory.put(previous);
-    } else {
-      const id = await db.inventory.add(fresh as InventoryItem);
-      undoStock = () => db.inventory.delete(id);
-    }
-    if (entry?.id !== undefined) await db.shoppingList.delete(entry.id);
-    if (draft.categoryTouched) await rememberCategory(fresh.name, draft.category);
-    await runAutoRestock();
-
-    setLast({
-      name: fresh.name,
-      undo: async () => {
-        await undoStock();
-        if (entry) await db.shoppingList.put(entry);
+    try {
+      // Stock, list and restock entries change together or not at all.
+      const undoStock = await db.transaction('rw', db.inventory, db.shoppingList, async () => {
+        let undo: () => Promise<unknown>;
+        // Read again: the amount may have changed since the scan.
+        const current = mergeId !== undefined ? await db.inventory.get(mergeId) : undefined;
+        if (current?.id !== undefined) {
+          // The older package runs out first, so its date stays the one to watch.
+          const oldDate = current.amount > 0 ? current.bestBefore : undefined;
+          await db.inventory.update(current.id, {
+            ...fresh,
+            addedAt: current.addedAt,
+            amount: Math.round((current.amount + fresh.amount) * 10) / 10,
+            bestBefore: earliest(oldDate, fresh.bestBefore),
+          });
+          undo = () => db.inventory.put(current);
+        } else {
+          const id = await db.inventory.add(fresh as InventoryItem);
+          undo = () => db.inventory.delete(id);
+        }
+        if (entry?.id !== undefined) await db.shoppingList.delete(entry.id);
         await runAutoRestock();
-      },
-    });
-    setFocusId(undefined);
-    setSaving(false);
-    backToScan();
+        return undo;
+      });
+      if (draft.categoryTouched) await rememberCategory(fresh.name, draft.category);
+
+      setLast({
+        name: fresh.name,
+        undo: async () => {
+          await db.transaction('rw', db.inventory, db.shoppingList, async () => {
+            await undoStock();
+            if (entry) await db.shoppingList.put(entry);
+            await runAutoRestock();
+          });
+        },
+      });
+      setFocusId(undefined);
+      backToScan();
+    } catch (err) {
+      console.error('Einräumen fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const undoLast = async () => {
@@ -189,7 +209,7 @@ export function PutAwaySheet({
     await last.undo();
   };
 
-  const amountOk = parseFloat(draft.amount) > 0;
+  const amountOk = parseDecimal(draft.amount) > 0;
 
   return (
     <BottomSheet open={open} onClose={onClose} title="Einkauf einräumen">
@@ -310,6 +330,11 @@ export function PutAwaySheet({
           {!amountOk && (
             <p className="-mt-1 text-center text-[12.5px] text-faint">Bitte die Menge eintragen.</p>
           )}
+          {error && (
+            <p role="alert" className="text-center text-[13.5px] text-danger">
+              {error}
+            </p>
+          )}
           <Button variant="ghost" block onClick={backToScan}>
             Zurück zum Scanner
           </Button>
@@ -329,6 +354,22 @@ function fromEntry(entry: ShoppingItem): Partial<Draft> {
   };
 }
 
+/** The stock item a restock entry was created for, if it still exists. */
+async function linkedItem(entry: ShoppingItem | undefined): Promise<InventoryItem | undefined> {
+  return entry?.linkedInventoryId ? db.inventory.get(entry.linkedInventoryId) : undefined;
+}
+
+/**
+ * A restock entry whose stock item was deleted (a natural thing to do with
+ * an empty one) still knows the minimum stock – so what replaces it becomes
+ * a staple again instead of silently losing the automatic restock.
+ */
+function stapleFromEntry(entry: ShoppingItem | undefined, unit: Unit): Partial<Draft> {
+  if (entry?.source !== 'auto-restock' || entry.amount === undefined) return {};
+  if ((entry.unit ?? unit) !== unit) return {};
+  return { isStaple: true, minStock: String(entry.amount) };
+}
+
 /** Same barcode, or else exactly the same name, already in stock. */
 async function findExisting(barcode?: string, name?: string): Promise<InventoryItem | undefined> {
   if (barcode) {
@@ -342,17 +383,15 @@ async function findExisting(barcode?: string, name?: string): Promise<InventoryI
 
 /**
  * Which list entry a scanned product most likely is: "Fettarme H-Milch 1,5 %"
- * is the "Milch" on the list. Falls back to a shared word, so the brand-heavy
- * product names still find their plain entry.
+ * is the "Milch" on the list. Failing a proper match, an entry that shares a
+ * food word ("Haferflocken kernig" for "Bio Haferflocken zart") – the user
+ * sees and can change the suggestion, so a near miss beats none.
  */
 function bestEntry(name: string, entries: ShoppingItem[]): ShoppingItem | undefined {
   if (!name.trim()) return undefined;
-  const direct = entries.find((e) => namesMatch(e.name, name));
-  if (direct) return direct;
-  const words = (s: string) => s.toLowerCase().split(/[^a-zäöüß]+/).filter((w) => w.length >= 4);
-  const mine = words(name);
-  return entries.find((e) =>
-    words(e.name).some((w) => mine.some((m) => m.includes(w) || w.includes(m))),
+  return (
+    entries.find((e) => namesMatch(e.name, name)) ??
+    entries.find((e) => sharesFoodWord(e.name, name))
   );
 }
 

@@ -36,11 +36,13 @@ export function AddInventorySheet({
     editItem ? draftFromItem(editItem) : EMPTY_DRAFT,
   );
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const close = () => {
     setStep(editItem ? 'form' : 'scan');
     setDraft(editItem ? draftFromItem(editItem) : EMPTY_DRAFT);
     setScanInfo(null);
+    setError(null);
     onClose();
   };
 
@@ -70,20 +72,29 @@ export function AddInventorySheet({
 
   const save = async () => {
     setSaving(true);
-    const payload = itemFromDraft(draft, editItem?.addedAt ?? nowISO());
-    if (editItem?.id !== undefined) {
-      await db.inventory.update(editItem.id, payload);
-    } else {
-      await db.inventory.add(payload as InventoryItem);
+    setError(null);
+    try {
+      const payload = itemFromDraft(draft, editItem?.addedAt ?? nowISO());
+      await db.transaction('rw', db.inventory, db.shoppingList, async () => {
+        if (editItem?.id !== undefined) {
+          await db.inventory.update(editItem.id, payload);
+        } else {
+          await db.inventory.add(payload as InventoryItem);
+        }
+        await runAutoRestock();
+      });
+      // A hand-picked category teaches the classifier for next time.
+      if (draft.categoryTouched) {
+        await rememberCategory(payload.name, draft.category);
+      }
+      onSaved?.();
+      close();
+    } catch (err) {
+      console.error('Artikel speichern fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    } finally {
+      setSaving(false);
     }
-    // A hand-picked category teaches the classifier for next time.
-    if (draft.categoryTouched) {
-      await rememberCategory(payload.name, draft.category);
-    }
-    await runAutoRestock();
-    setSaving(false);
-    onSaved?.();
-    close();
   };
 
   return (
@@ -116,6 +127,12 @@ export function AddInventorySheet({
             </p>
           )}
           <InventoryFields draft={draft} setDraft={setDraft} />
+
+          {error && (
+            <p role="alert" className="text-[13.5px] text-danger">
+              {error}
+            </p>
+          )}
 
           <Button
             block

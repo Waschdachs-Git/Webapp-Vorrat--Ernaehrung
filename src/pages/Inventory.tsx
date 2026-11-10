@@ -9,6 +9,7 @@ import { AddButton, EmptyState, Input, Section, TextTabs } from '@/components/ui
 import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
 import { daysUntil } from '@/lib/date';
+import { useTodayISO } from '@/hooks/useDay';
 import { formatAmount, relativeBestBefore } from '@/lib/format';
 import {
   CATEGORY_LABELS,
@@ -71,6 +72,8 @@ export function Inventory(): ReactNode {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | undefined>();
   const showUndo = useUndo();
+  // Best-before urgency depends on the date: recompute when the day changes.
+  const today = useTodayISO();
 
   const all = useMemo(() => items ?? [], [items]);
 
@@ -87,7 +90,8 @@ export function Inventory(): ReactNode {
       if (isLowStaple(i)) low++;
     }
     return { expired, expiring, low };
-  }, [all]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, today]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -108,7 +112,8 @@ export function Inventory(): ReactNode {
           return i.location === filter;
       }
     });
-  }, [all, query, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, query, filter, today]);
 
   const groups = useMemo<Group[]>(() => {
     const buckets = new Map<string, InventoryItem[]>();
@@ -135,7 +140,8 @@ export function Inventory(): ReactNode {
     return order
       .filter((key) => (buckets.get(key)?.length ?? 0) > 0)
       .map((key) => ({ key, label: labelOf(key), items: buckets.get(key)! }));
-  }, [visible, groupMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, groupMode, today]);
 
   const removeItem = async (item: InventoryItem) => {
     if (item.id === undefined) return;

@@ -4,7 +4,7 @@ import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input } from './ui';
 import { deleteDiaryItem, updateDiaryItemAmount } from '@/lib/actions';
 import type { DiaryItem } from '@/db/types';
-import { formatAmount, unitLabel } from '@/lib/format';
+import { formatAmount, unitLabel, parseDecimal } from '@/lib/format';
 
 export interface DiaryItemRef {
   entryId: string;
@@ -27,26 +27,35 @@ export function DiaryItemSheet({
     target ? String(target.item.amount) : '',
   );
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fromStock =
     target?.item.sourceType === 'inventory' && target.item.refId !== undefined;
 
-  const save = async () => {
-    if (!target) return;
-    const next = parseFloat(amount);
-    if (!(next > 0)) return;
+  const run = async (action: () => Promise<void>) => {
     setBusy(true);
-    await updateDiaryItemAmount(target.entryId, target.itemIndex, next);
-    setBusy(false);
-    onClose();
+    setError(null);
+    try {
+      await action();
+      onClose();
+    } catch (err) {
+      console.error('Tagebuch ändern fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const remove = async () => {
+  const save = () => {
     if (!target) return;
-    setBusy(true);
-    await deleteDiaryItem(target.entryId, target.itemIndex);
-    setBusy(false);
-    onClose();
+    const next = parseDecimal(amount);
+    if (!(next > 0)) return;
+    void run(() => updateDiaryItemAmount(target.entryId, target.itemIndex, next));
+  };
+
+  const remove = () => {
+    if (!target) return;
+    void run(() => deleteDiaryItem(target.entryId, target.itemIndex));
   };
 
   return (
@@ -82,10 +91,16 @@ export function DiaryItemSheet({
           <Button
             block
             onClick={save}
-            disabled={busy || !(parseFloat(amount) > 0)}
+            disabled={busy || !(parseDecimal(amount) > 0)}
           >
             Menge speichern
           </Button>
+
+          {error && (
+            <p role="alert" className="text-[13.5px] text-danger">
+              {error}
+            </p>
+          )}
 
           <Button variant="danger" block onClick={remove} disabled={busy}>
             <Trash2 size={16} /> Eintrag löschen

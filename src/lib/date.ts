@@ -16,7 +16,9 @@ export function toISODate(d: Date): string {
 }
 
 export function ageFromBirthdate(birthdate: string): number {
-  const b = new Date(birthdate);
+  // Local midnight: a bare date string would be read as UTC and can land on
+  // the previous day west of Greenwich.
+  const b = new Date(`${birthdate}T00:00:00`);
   if (Number.isNaN(b.getTime())) return 0;
   const now = new Date();
   let age = now.getFullYear() - b.getFullYear();

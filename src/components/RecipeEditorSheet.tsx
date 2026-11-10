@@ -5,6 +5,7 @@ import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input, Select, Textarea } from './ui';
 import { useUndo } from './UndoToast';
 import type { OwnRecipe, RecipeIngredient, Unit } from '@/db/types';
+import { parseDecimal } from '@/lib/format';
 
 interface IngredientDraft {
   name: string;
@@ -43,6 +44,7 @@ export function RecipeEditorSheet({
     fat: editRecipe?.nutritionPerServing ? String(editRecipe.nutritionPerServing.fat) : '',
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const showUndo = useUndo();
 
   const setIngredient = (idx: number, patch: Partial<IngredientDraft>) =>
@@ -56,15 +58,15 @@ export function RecipeEditorSheet({
       .filter((i) => i.name.trim())
       .map((i) => ({
         name: i.name.trim(),
-        amount: parseFloat(i.amount) || 0,
+        amount: parseDecimal(i.amount),
         unit: i.unit,
       }));
 
     const hasNutrition = nutrition.kcal !== '';
     const payload: Omit<OwnRecipe, 'id'> = {
       title: title.trim(),
-      servings: parseFloat(servings) || 1,
-      minutes: Math.round(parseFloat(minutes)) || undefined,
+      servings: parseDecimal(servings) || 1,
+      minutes: Math.round(parseDecimal(minutes)) || undefined,
       ingredients: parsedIngredients,
       steps: steps
         .split('\n')
@@ -76,21 +78,28 @@ export function RecipeEditorSheet({
         .filter(Boolean),
       nutritionPerServing: hasNutrition
         ? {
-            kcal: parseFloat(nutrition.kcal) || 0,
-            protein: parseFloat(nutrition.protein) || 0,
-            carbs: parseFloat(nutrition.carbs) || 0,
-            fat: parseFloat(nutrition.fat) || 0,
+            kcal: parseDecimal(nutrition.kcal),
+            protein: parseDecimal(nutrition.protein),
+            carbs: parseDecimal(nutrition.carbs),
+            fat: parseDecimal(nutrition.fat),
           }
         : undefined,
     };
 
-    if (editRecipe?.id !== undefined) {
-      await db.recipesOwn.update(editRecipe.id, payload);
-    } else {
-      await db.recipesOwn.add(payload as OwnRecipe);
+    setError(null);
+    try {
+      if (editRecipe?.id !== undefined) {
+        await db.recipesOwn.update(editRecipe.id, payload);
+      } else {
+        await db.recipesOwn.add(payload as OwnRecipe);
+      }
+      onClose();
+    } catch (err) {
+      console.error('Rezept speichern fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onClose();
   };
 
   const remove = async () => {
@@ -214,6 +223,12 @@ export function RecipeEditorSheet({
             ))}
           </div>
         </details>
+
+        {error && (
+          <p role="alert" className="text-[13.5px] text-danger">
+            {error}
+          </p>
+        )}
 
         <Button block disabled={saving || !title.trim()} onClick={save} className="mt-1">
           {editRecipe ? 'Speichern' : 'Rezept anlegen'}

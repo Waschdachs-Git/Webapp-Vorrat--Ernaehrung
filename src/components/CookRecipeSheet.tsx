@@ -10,9 +10,9 @@ import {
   defaultMealType,
   undoCook,
 } from '@/lib/actions';
-import { namesMatch } from '@/lib/match';
+import { isSameFood } from '@/lib/match';
 import { useUndo } from './UndoToast';
-import { formatAmount } from '@/lib/format';
+import { formatAmount, parseDecimal } from '@/lib/format';
 import type { MealType, OwnRecipe, RecipeIngredient } from '@/db/types';
 
 const MEAL_OPTIONS: { value: MealType; label: string }[] = [
@@ -41,15 +41,19 @@ export function CookRecipeSheet({
   const [meal, setMeal] = useState<MealType>(defaultMealType());
   const [servings, setServings] = useState('1');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Entries just put on the shopping list – undone right here, because the
+  // sheet stays open and would cover the usual toast.
+  const [justListed, setJustListed] = useState<string[]>([]);
   const showUndo = useUndo();
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const shopping = useLiveQuery(() => db.shoppingList.toArray(), []);
 
   const statusOf = (ing: RecipeIngredient): IngredientStatus => {
-    if ((inventory ?? []).some((i) => i.amount > 0 && namesMatch(i.name, ing.name))) {
+    if ((inventory ?? []).some((i) => i.amount > 0 && isSameFood(i, ing.name))) {
       return 'stock';
     }
-    if ((shopping ?? []).some((s) => !s.checked && namesMatch(s.name, ing.name))) {
+    if ((shopping ?? []).some((s) => !s.checked && isSameFood(s, ing.name))) {
       return 'list';
     }
     return 'missing';
@@ -64,23 +68,35 @@ export function CookRecipeSheet({
   const cook = async () => {
     if (!recipe) return;
     setSaving(true);
-    const n = parseFloat(servings) || 1;
-    const result = await cookRecipe({ recipe, mealType: meal, servingsCooked: n });
-    const kcal = Math.round((recipe.nutritionPerServing?.kcal ?? 0) * n);
-    showUndo(`${recipe.title} gebucht · ${kcal} kcal`, () => undoCook(result));
-    setSaving(false);
-    onClose();
+    setError(null);
+    try {
+      const n = parseDecimal(servings) || 1;
+      const result = await cookRecipe({ recipe, mealType: meal, servingsCooked: n });
+      const kcal = Math.round((recipe.nutritionPerServing?.kcal ?? 0) * n);
+      showUndo(`${recipe.title} gebucht · ${kcal} kcal`, () => undoCook(result));
+      onClose();
+    } catch (err) {
+      console.error('Rezept buchen fehlgeschlagen:', err);
+      setError('Konnte nicht gebucht werden. Bitte noch einmal versuchen.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const putOnList = async () => {
-    const ids = await addIngredientsToShoppingList(toBuy);
-    if (ids.length === 0) return;
-    showUndo(
-      ids.length === 1
-        ? '1 Zutat auf der Einkaufsliste'
-        : `${ids.length} Zutaten auf der Einkaufsliste`,
-      () => db.shoppingList.bulkDelete(ids),
-    );
+    setError(null);
+    try {
+      setJustListed(await addIngredientsToShoppingList(toBuy));
+    } catch (err) {
+      console.error('Einkaufsliste ergänzen fehlgeschlagen:', err);
+      setError('Die Zutaten konnten nicht auf die Einkaufsliste gesetzt werden.');
+    }
+  };
+
+  const undoList = async () => {
+    const ids = justListed;
+    setJustListed([]);
+    await db.shoppingList.bulkDelete(ids);
   };
 
   const n = recipe?.nutritionPerServing;
@@ -145,6 +161,21 @@ export function CookRecipeSheet({
                     ? '1 fehlende Zutat auf die Einkaufsliste'
                     : `${toBuy.length} fehlende Zutaten auf die Einkaufsliste`}
                 </Button>
+              ) : justListed.length > 0 ? (
+                <p role="status" className="mt-2 flex items-center gap-3 text-[13.5px] text-muted">
+                  <span className="min-w-0 flex-1">
+                    {justListed.length === 1
+                      ? '1 Zutat steht jetzt auf der Einkaufsliste.'
+                      : `${justListed.length} Zutaten stehen jetzt auf der Einkaufsliste.`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={undoList}
+                    className="min-h-[36px] shrink-0 font-medium text-accent active:opacity-60"
+                  >
+                    Rückgängig
+                  </button>
+                </p>
               ) : (
                 <p className={cx('mt-2 text-[13.5px]', onList ? 'text-muted' : 'text-accent')}>
                   {onList
@@ -184,12 +215,17 @@ export function CookRecipeSheet({
             </Field>
             {n ? (
               <p className="text-[13px] text-muted">
-                {Math.round(n.kcal * (parseFloat(servings) || 1))} kcal werden ins Tagebuch gebucht.
+                {Math.round(n.kcal * (parseDecimal(servings) || 1))} kcal werden ins Tagebuch gebucht.
               </p>
             ) : (
               <p className="rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
                 Für dieses Rezept sind keine Nährwerte hinterlegt – es würde mit
                 0 kcal gebucht. Ergänze sie über „Rezept bearbeiten“.
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="text-[13.5px] text-danger">
+                {error}
               </p>
             )}
             <Button block onClick={cook} disabled={saving}>

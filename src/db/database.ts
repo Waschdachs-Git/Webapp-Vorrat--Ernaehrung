@@ -121,7 +121,7 @@ export function ensureSeeded(force = false): Promise<void> {
   if (!seedPromise) {
     seedPromise = (async () => {
       const existingSettings = await db.settings.get(SETTINGS_ID);
-      if (existingSettings?.accentColor.toLowerCase() === LEGACY_DEFAULT_ACCENT) {
+      if (existingSettings?.accentColor?.toLowerCase() === LEGACY_DEFAULT_ACCENT) {
         await db.settings.update(SETTINGS_ID, { accentColor: DEFAULT_ACCENT });
       }
       // No default settings row is written: useSettings falls back to the

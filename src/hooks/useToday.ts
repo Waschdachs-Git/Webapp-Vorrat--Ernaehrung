@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PROFILE_ID } from '@/db/database';
-import { todayISO, localDayBounds } from '@/lib/date';
+import { localDayBounds } from '@/lib/date';
 import { sumDiary, EMPTY_NUTRIMENTS } from '@/lib/nutrition';
 import { effectiveTargets } from '@/lib/health';
 import type { DiaryEntry, Nutriments, Profile, Targets } from '@/db/types';
@@ -16,16 +16,18 @@ export interface TodayData {
 
 const ZERO_TARGETS: Targets = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
-/** Aggregated view of today's diary against the profile's targets. */
-export function useToday(): TodayData {
+/** Aggregated view of one day's diary (YYYY-MM-DD) against the profile's targets. */
+export function useDiaryDay(day: string): TodayData {
   const profile = useLiveQuery(() => db.profile.get(PROFILE_ID), []);
-  const today = todayISO();
 
   // Range query over the `datetime` index instead of scanning the whole table.
   const entries = useLiveQuery(async () => {
-    const { start, end } = localDayBounds(today);
-    return db.diary.where('datetime').between(start, end, true, true).toArray();
-  }, [today]);
+    const { start, end } = localDayBounds(day);
+    const rows = await db.diary.where('datetime').between(start, end, true, true).toArray();
+    // Rows can arrive through sync from another version of the app; one that
+    // is malformed must not take the whole page down.
+    return rows.filter(isUsableEntry);
+  }, [day]);
 
   const loading = profile === undefined || entries === undefined;
   const list = entries ?? [];
@@ -47,4 +49,14 @@ export function useToday(): TodayData {
     entries: list,
     loading,
   };
+}
+
+/** The parts of a diary entry the pages rely on. */
+export function isUsableEntry(e: DiaryEntry): boolean {
+  return (
+    typeof e.datetime === 'string' &&
+    Array.isArray(e.items) &&
+    e.items.every((i) => typeof i?.name === 'string' && typeof i.kcal === 'number') &&
+    typeof e.totals?.kcal === 'number'
+  );
 }
