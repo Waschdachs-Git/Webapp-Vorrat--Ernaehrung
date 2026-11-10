@@ -412,10 +412,10 @@ function PortionStep({
       )}
 
       <div className="grid grid-cols-4 gap-2 rounded-2xl bg-surface-2 p-3 text-center">
-        <Stat label="kcal" value={Math.round(scaled.kcal)} />
-        <Stat label="Protein" value={`${scaled.protein} g`} />
-        <Stat label="Kohlenh." value={`${scaled.carbs} g`} />
-        <Stat label="Fett" value={`${scaled.fat} g`} />
+        <Stat label="kcal" value={Math.round(scaled.kcal).toLocaleString('de-DE')} />
+        <Stat label="Protein" value={`${scaled.protein.toLocaleString('de-DE')} g`} />
+        <Stat label="Kohlenh." value={`${scaled.carbs.toLocaleString('de-DE')} g`} />
+        <Stat label="Fett" value={`${scaled.fat.toLocaleString('de-DE')} g`} />
       </div>
 
       {picked.sourceType === 'inventory' && (
