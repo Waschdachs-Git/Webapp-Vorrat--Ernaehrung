@@ -17,7 +17,7 @@ import {
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
 import { nowISO } from '@/lib/date';
-import { formatAmount } from '@/lib/format';
+import { formatAmount, parseDecimal } from '@/lib/format';
 import { namesMatch } from '@/lib/match';
 import type { InventoryItem, ShoppingItem, Unit } from '@/db/types';
 
@@ -209,7 +209,7 @@ export function PutAwaySheet({
     await last.undo();
   };
 
-  const amountOk = parseFloat(draft.amount) > 0;
+  const amountOk = parseDecimal(draft.amount) > 0;
 
   return (
     <BottomSheet open={open} onClose={onClose} title="Einkauf einräumen">

@@ -14,6 +14,13 @@ import { cloudEnabled } from '@/db/database';
 import { Button, Card, Field, Input, SegmentedControl, cx } from '@/components/ui';
 import { useSettings, updateSettings } from '@/hooks/useSettings';
 import { exportData, importData } from '@/lib/backup';
+import {
+  type UpdateCheck,
+  appVersionLabel,
+  checkForUpdate,
+  reloadNow,
+  useUpdateReady,
+} from '@/lib/appUpdate';
 import type { ThemeMode } from '@/db/types';
 
 const ACCENT_PRESETS = [
@@ -35,7 +42,15 @@ export function Settings(): ReactNode {
   const settings = useSettings();
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [keyInput, setKeyInput] = useState(settings.spoonacularApiKey ?? '');
+  const storedKey = settings.spoonacularApiKey ?? '';
+  // null = untouched: the field follows the stored key, which arrives late
+  // (the settings load asynchronously, or sync in from another device). An
+  // initial value taken once would show an empty field although a key is
+  // stored – and saving that would delete it.
+  const [keyDraft, setKeyDraft] = useState<string | null>(null);
+  const keyValue = keyDraft ?? storedKey;
+  const keyChanged = keyValue.trim() !== storedKey;
+  const removingKey = keyChanged && keyValue.trim() === '';
   const [keySaved, setKeySaved] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   // Importing replaces everything, so it goes through an explicit confirmation.
@@ -43,7 +58,8 @@ export function Settings(): ReactNode {
   const [importing, setImporting] = useState(false);
 
   const saveKey = async () => {
-    await updateSettings({ spoonacularApiKey: keyInput.trim() || undefined });
+    await updateSettings({ spoonacularApiKey: keyValue.trim() || undefined });
+    setKeyDraft(null);
     setKeySaved(true);
     window.setTimeout(() => setKeySaved(false), 1500);
   };
@@ -53,8 +69,14 @@ export function Settings(): ReactNode {
     setImporting(true);
     try {
       const text = await pendingImport.text();
-      await importData(text);
-      setImportMsg('Daten erfolgreich importiert.');
+      const { skipped } = await importData(text);
+      setImportMsg(
+        skipped === 0
+          ? 'Daten erfolgreich importiert.'
+          : `Daten importiert. ${skipped} ${
+              skipped === 1 ? 'fehlerhafter Eintrag wurde' : 'fehlerhafte Einträge wurden'
+            } übersprungen.`,
+      );
     } catch (err) {
       setImportMsg(
         err instanceof Error ? err.message : 'Import fehlgeschlagen.',
@@ -91,22 +113,38 @@ export function Settings(): ReactNode {
           </div>
           <Field
             label="Schlüssel (API-Key)"
-            hint="Kostenloser Schlüssel von spoonacular.com/food-api. Wird nur an Spoonacular gesendet."
+            hint={`Kostenloser Schlüssel von spoonacular.com/food-api. Er gehört zu deinen Einstellungen${
+              cloudEnabled ? ' (mit Anmeldung auch auf deinen anderen Geräten)' : ''
+            } und steht nicht in Backup-Dateien.`}
           >
             <Input
               type="password"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={keyValue}
+              onChange={(e) => setKeyDraft(e.target.value)}
               placeholder="z. B. a1b2c3…"
             />
           </Field>
-          <Button onClick={saveKey} variant="secondary" className="mt-3 w-full">
+          <p className="mt-2 text-[13px] text-muted">
+            {storedKey ? 'Ein Schlüssel ist gespeichert.' : 'Noch kein Schlüssel gespeichert.'}
+          </p>
+          <Button
+            onClick={saveKey}
+            variant={removingKey ? 'danger' : 'secondary'}
+            className="mt-3 w-full"
+            disabled={!keyChanged && !keySaved}
+          >
             {keySaved ? (
               <>
                 <Check size={16} /> Gespeichert
               </>
+            ) : removingKey ? (
+              'Schlüssel entfernen'
             ) : (
-              'Key speichern'
+              'Schlüssel speichern'
             )}
           </Button>
         </Card>
@@ -222,10 +260,65 @@ export function Settings(): ReactNode {
           )}
 
           {importMsg && (
-            <p className="mt-3 text-[13px] text-muted">{importMsg}</p>
+            <p role="status" className="mt-3 text-[13px] text-muted">
+              {importMsg}
+            </p>
           )}
         </Card>
+
+        <AppInfo />
       </div>
     </div>
+  );
+}
+
+/** Which build runs here, and a manual way to fetch a newer one. */
+function AppInfo(): ReactNode {
+  const ready = useUpdateReady();
+  const [state, setState] = useState<'idle' | 'checking' | UpdateCheck>('idle');
+
+  const check = async () => {
+    setState('checking');
+    setState(await checkForUpdate());
+  };
+
+  const message =
+    ready || state === 'ready'
+      ? 'Eine neue Version ist geladen.'
+      : state === 'current'
+        ? 'Du hast die aktuelle Version.'
+        : state === 'unavailable'
+          ? 'Gerade nicht möglich – besteht eine Internetverbindung?'
+          : null;
+
+  return (
+    <section className="px-1 pb-2">
+      <p className="tnum text-[13px] text-faint">{appVersionLabel()}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {ready || state === 'ready' ? (
+          <button
+            type="button"
+            onClick={reloadNow}
+            className="min-h-[40px] text-[14px] font-semibold text-accent active:opacity-60"
+          >
+            Jetzt neu laden
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={check}
+            disabled={state === 'checking'}
+            className="min-h-[40px] text-[14px] font-medium text-accent active:opacity-60 disabled:opacity-50"
+          >
+            {state === 'checking' ? 'Suche …' : 'Nach Update suchen'}
+          </button>
+        )}
+        {message && (
+          <p role="status" className="text-[13px] text-muted">
+            {message}
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

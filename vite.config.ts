@@ -65,6 +65,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Stated explicitly: without the injected register script the plugin
+        // would otherwise build a worker that waits to be told to activate –
+        // and installed apps on iOS may then never pick up a new version.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // Only precache Latin font subsets; others download on demand.
         globIgnores: ['**/*-{cyrillic,cyrillic-ext,greek,greek-ext,vietnamese}-*.woff2'],

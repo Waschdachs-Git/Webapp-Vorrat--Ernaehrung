@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Settings as SettingsIcon,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { db, PROFILE_ID } from '@/db/database';
@@ -24,7 +25,17 @@ import {
   tdee,
 } from '@/lib/health';
 import { ageFromBirthdate, todayISO } from '@/lib/date';
-import type { Targets } from '@/db/types';
+import { parseDecimal } from '@/lib/format';
+import {
+  MAX_WEIGHT_KG,
+  MIN_WEIGHT_KG,
+  deleteWeight,
+  isPlausibleWeight,
+  saveWeight,
+  updateWeight,
+} from '@/lib/weight';
+import { useUndo } from '@/components/UndoToast';
+import type { Targets, WeightLog } from '@/db/types';
 
 // Recharts is only needed once there are at least two weight entries.
 const WeightChart = lazy(() =>
@@ -43,6 +54,10 @@ export function Profile(): ReactNode {
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [targetsOpen, setTargetsOpen] = useState(false);
   const [newWeight, setNewWeight] = useState('');
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState<WeightLog | null>(null);
+  const [showAllWeights, setShowAllWeights] = useState(false);
+  const showUndo = useUndo();
 
   if (!profile) {
     return (
@@ -73,19 +88,31 @@ export function Profile(): ReactNode {
   };
 
   const addWeight = async () => {
-    const w = parseFloat(newWeight);
-    if (!(w > 0)) return;
-    const today = todayISO();
-    const existing = (weights ?? []).find((x) => x.date === today);
-    if (existing?.id !== undefined) {
-      await db.weightLog.update(existing.id, { weightKg: w });
-    } else {
-      await db.weightLog.add({ date: today, weightKg: w });
+    if (newWeight.trim() === '') return;
+    const w = parseDecimal(newWeight);
+    if (!isPlausibleWeight(w)) {
+      setWeightError(WEIGHT_RANGE_HINT);
+      return;
     }
-    // Keep the profile's current weight in sync with the latest entry.
-    await db.profile.update(PROFILE_ID, { weightKg: w });
-    setNewWeight('');
+    setWeightError(null);
+    try {
+      // Also keeps the profile's current weight in line with the latest entry.
+      await saveWeight(todayISO(), w);
+      setNewWeight('');
+    } catch (err) {
+      console.error('Gewicht speichern fehlgeschlagen:', err);
+      setWeightError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    }
   };
+
+  const removeWeight = async (entry: WeightLog) => {
+    if (entry.id === undefined) return;
+    const undo = await deleteWeight(entry.id);
+    setEditWeight(null);
+    showUndo(`Gewicht vom ${formatWeightDate(entry.date)} gelöscht`, undo);
+  };
+
+  const newestFirst = [...(weights ?? [])].reverse();
 
   const chartData = (weights ?? []).map((w) => {
     const [, m, d] = w.date.split('-');
@@ -208,9 +235,14 @@ export function Profile(): ReactNode {
             <Input
               type="number"
               inputMode="decimal"
+              step="any"
               placeholder="Aktuelles Gewicht (kg)"
+              aria-label="Aktuelles Gewicht in Kilogramm"
               value={newWeight}
-              onChange={(e) => setNewWeight(e.target.value)}
+              onChange={(e) => {
+                setNewWeight(e.target.value);
+                setWeightError(null);
+              }}
               onKeyDown={(e) => e.key === 'Enter' && addWeight()}
               className="min-w-0 flex-1"
             />
@@ -225,6 +257,11 @@ export function Profile(): ReactNode {
               <Plus size={20} />
             </Button>
           </div>
+          {weightError && (
+            <p role="alert" className="-mt-1 mb-3 text-[13px] text-danger">
+              {weightError}
+            </p>
+          )}
 
           {chartData.length >= 2 ? (
             <Suspense
@@ -239,39 +276,49 @@ export function Profile(): ReactNode {
           )}
 
           {(weights?.length ?? 0) > 0 && (
-            <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3">
-              {[...(weights ?? [])]
-                .reverse()
-                .slice(0, 5)
-                .map((w, i, arr) => {
-                  const prev = arr[i + 1];
-                  const diff = prev ? w.weightKg - prev.weightKg : 0;
-                  return (
-                    <div
-                      key={w.id}
-                      className="flex items-center justify-between text-[13px]"
-                    >
-                      <span className="text-muted">
-                        {new Date(w.date + 'T00:00:00').toLocaleDateString('de-DE', {
-                          weekday: 'short',
-                          day: 'numeric',
-                          month: 'numeric',
-                        })}
-                      </span>
-                      <span className="tnum flex items-baseline gap-3">
-                        {prev && Math.abs(diff) >= 0.05 && (
-                          <span className="text-[12px] text-faint">
-                            {diff > 0 ? '+' : '−'}
-                            {Math.abs(diff).toLocaleString('de-DE', { maximumFractionDigits: 1 })}
+            <div className="mt-3 border-t border-border pt-1">
+              <ul>
+                {newestFirst
+                  .slice(0, showAllWeights ? undefined : 5)
+                  .map((w, i) => {
+                    // From the full list, so the last visible row has one too.
+                    const prev = newestFirst[i + 1];
+                    const diff = prev ? w.weightKg - prev.weightKg : 0;
+                    return (
+                      <li key={w.id}>
+                        {/* Tap to correct or remove – a typo must be fixable. */}
+                        <button
+                          type="button"
+                          onClick={() => setEditWeight(w)}
+                          aria-label={`Gewicht vom ${formatWeightDate(w.date)} bearbeiten`}
+                          className="-mx-2 flex min-h-[40px] w-[calc(100%+1rem)] items-center justify-between rounded-[10px] px-2 text-[14px] active:bg-surface-2"
+                        >
+                          <span className="text-muted">{formatWeightDate(w.date)}</span>
+                          <span className="tnum flex items-baseline gap-3">
+                            {prev && Math.abs(diff) >= 0.05 && (
+                              <span className="text-[12.5px] text-faint">
+                                {diff > 0 ? '+' : '−'}
+                                {Math.abs(diff).toLocaleString('de-DE', { maximumFractionDigits: 1 })}
+                              </span>
+                            )}
+                            <span className="font-medium text-text">
+                              {w.weightKg.toLocaleString('de-DE')} kg
+                            </span>
                           </span>
-                        )}
-                        <span className="font-medium text-text">
-                          {w.weightKg.toLocaleString('de-DE')} kg
-                        </span>
-                      </span>
-                    </div>
-                  );
-                })}
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+              {(weights?.length ?? 0) > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllWeights((v) => !v)}
+                  className="min-h-[40px] text-[14px] font-medium text-accent active:opacity-60"
+                >
+                  {showAllWeights ? 'Weniger anzeigen' : `Alle ${weights?.length} Einträge anzeigen`}
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -294,6 +341,13 @@ export function Profile(): ReactNode {
         )}
       </BottomSheet>
 
+      <WeightEntrySheet
+        key={editWeight?.id ?? 'none'}
+        entry={editWeight}
+        onClose={() => setEditWeight(null)}
+        onDelete={removeWeight}
+      />
+
       <TargetsSheet
         // Remount when the targets change so the inputs show current values.
         key={`${targets.kcal}-${targets.protein}-${targets.carbs}-${targets.fat}`}
@@ -303,6 +357,88 @@ export function Profile(): ReactNode {
         current={targets}
       />
     </div>
+  );
+}
+
+const WEIGHT_RANGE_HINT = `Bitte ein Gewicht zwischen ${MIN_WEIGHT_KG} und ${MAX_WEIGHT_KG} kg eingeben.`;
+
+function formatWeightDate(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** Correct or remove one entry of the weight log. */
+function WeightEntrySheet({
+  entry,
+  onClose,
+  onDelete,
+}: {
+  entry: WeightLog | null;
+  onClose: () => void;
+  onDelete: (entry: WeightLog) => void;
+}): ReactNode {
+  const [value, setValue] = useState(entry ? String(entry.weightKg) : '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!entry || entry.id === undefined) return;
+    const w = parseDecimal(value);
+    if (!isPlausibleWeight(w)) {
+      setError(WEIGHT_RANGE_HINT);
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateWeight(entry.id, w);
+      onClose();
+    } catch (err) {
+      console.error('Gewicht ändern fehlgeschlagen:', err);
+      setError('Konnte nicht gespeichert werden. Bitte noch einmal versuchen.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <BottomSheet
+      open={!!entry}
+      onClose={onClose}
+      title={entry ? `Gewicht am ${formatWeightDate(entry.date)}` : 'Gewicht'}
+    >
+      {entry && (
+        <div className="flex flex-col gap-4">
+          <Field label="Gewicht (kg)">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={value}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setError(null);
+              }}
+              autoFocus
+            />
+          </Field>
+          {error && (
+            <p role="alert" className="-mt-2 text-[13px] text-danger">
+              {error}
+            </p>
+          )}
+          <Button block onClick={save} disabled={busy}>
+            Speichern
+          </Button>
+          <Button variant="danger" block onClick={() => onDelete(entry)} disabled={busy}>
+            <Trash2 size={16} /> Eintrag löschen
+          </Button>
+        </div>
+      )}
+    </BottomSheet>
   );
 }
 

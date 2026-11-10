@@ -61,12 +61,3 @@ export function formatTime(isoDatetime: string): string {
     minute: '2-digit',
   });
 }
-
-/**
- * Parse what a user typed into an amount field. Accepts a decimal comma as
- * well as a point; anything unusable is 0.
- */
-export function parseDecimal(text: string): number {
-  const n = parseFloat(text.trim().replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}

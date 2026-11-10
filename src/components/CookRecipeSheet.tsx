@@ -12,7 +12,7 @@ import {
 } from '@/lib/actions';
 import { namesMatch } from '@/lib/match';
 import { useUndo } from './UndoToast';
-import { formatAmount } from '@/lib/format';
+import { formatAmount, parseDecimal } from '@/lib/format';
 import type { MealType, OwnRecipe, RecipeIngredient } from '@/db/types';
 
 const MEAL_OPTIONS: { value: MealType; label: string }[] = [
@@ -64,7 +64,7 @@ export function CookRecipeSheet({
   const cook = async () => {
     if (!recipe) return;
     setSaving(true);
-    const n = parseFloat(servings) || 1;
+    const n = parseDecimal(servings) || 1;
     const result = await cookRecipe({ recipe, mealType: meal, servingsCooked: n });
     const kcal = Math.round((recipe.nutritionPerServing?.kcal ?? 0) * n);
     showUndo(`${recipe.title} gebucht · ${kcal} kcal`, () => undoCook(result));
@@ -184,7 +184,7 @@ export function CookRecipeSheet({
             </Field>
             {n ? (
               <p className="text-[13px] text-muted">
-                {Math.round(n.kcal * (parseFloat(servings) || 1))} kcal werden ins Tagebuch gebucht.
+                {Math.round(n.kcal * (parseDecimal(servings) || 1))} kcal werden ins Tagebuch gebucht.
               </p>
             ) : (
               <p className="rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">

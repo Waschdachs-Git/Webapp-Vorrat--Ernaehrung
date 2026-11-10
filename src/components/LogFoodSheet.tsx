@@ -10,8 +10,8 @@ import { lookupBarcode } from '@/lib/openfoodfacts';
 import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
 import type { InventoryItem, MealType, Nutriments, Unit } from '@/db/types';
 import { useUndo } from './UndoToast';
-import { formatAmount, relativeBestBefore, unitLabel } from '@/lib/format';
-import { daysUntil, parseDecimal } from '@/lib/date';
+import { formatAmount, relativeBestBefore, unitLabel, parseDecimal } from '@/lib/format';
+import { daysUntil } from '@/lib/date';
 
 type Source = 'inventory' | 'foods' | 'free' | 'scan';
 
@@ -513,10 +513,10 @@ function FreePick({ onPicked }: { onPicked: (p: Picked) => void }): ReactNode {
             name: name.trim(),
             unit: 'g',
             per100: {
-              kcal: parseFloat(per100.kcal) || 0,
-              protein: parseFloat(per100.protein) || 0,
-              carbs: parseFloat(per100.carbs) || 0,
-              fat: parseFloat(per100.fat) || 0,
+              kcal: parseDecimal(per100.kcal),
+              protein: parseDecimal(per100.protein),
+              carbs: parseDecimal(per100.carbs),
+              fat: parseDecimal(per100.fat),
             },
             sourceType: 'custom',
           })
