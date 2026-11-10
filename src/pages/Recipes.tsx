@@ -24,6 +24,7 @@ import {
   cx,
 } from '@/components/ui';
 import { useSettings } from '@/hooks/useSettings';
+import { useTodayISO } from '@/hooks/useDay';
 import {
   SpoonacularClient,
   type RecipeHit,
@@ -137,6 +138,8 @@ function CookMode({
 }): ReactNode {
   const inventory = useLiveQuery(() => db.inventory.toArray(), []);
   const settings = useSettings();
+  // "Uses up what expires" depends on the date; follow the day change.
+  useTodayISO();
   const [spoon, setSpoon] = useState<RecipeHit[] | null>(null);
   const [spoonState, setSpoonState] = useState<'idle' | 'loading' | string>('idle');
 

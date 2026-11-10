@@ -26,23 +26,26 @@ export function defaultMealType(d = new Date()): MealType {
   return 'snack';
 }
 
+/**
+ * Everything a booking touches. Each booking runs in one transaction over
+ * these tables, so diary and stock can never end up half-updated – and the
+ * change reaches other devices as one unit.
+ */
+function bookingTables() {
+  return [db.diary, db.inventory, db.shoppingList];
+}
+
 /** Append a diary entry from a list of items. */
-async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<string> {
-  const totals = items.reduce<Nutriments>(
-    (acc, i) =>
-      addNutriments(acc, {
-        kcal: i.kcal,
-        protein: i.protein,
-        carbs: i.carbs,
-        fat: i.fat,
-      }),
-    { ...EMPTY_NUTRIMENTS },
-  );
+async function bookDiary(
+  mealType: MealType,
+  items: DiaryItem[],
+  at: string = nowISO(),
+): Promise<string> {
   const entry: DiaryEntry = {
-    datetime: nowISO(),
+    datetime: at,
     mealType,
     items,
-    totals,
+    totals: recalcTotals(items),
   };
   return db.diary.add(entry);
 }
@@ -54,13 +57,20 @@ async function bookDiary(mealType: MealType, items: DiaryItem[]): Promise<string
 export async function logFood(args: {
   mealType: MealType;
   item: DiaryItem;
+  /** Book at this moment instead of now (for adding to an earlier day). */
+  at?: string;
 }): Promise<string> {
-  const entryId = await bookDiary(args.mealType, [args.item]);
-  if (args.item.sourceType === 'inventory' && args.item.refId !== undefined) {
-    await subtractInventory(args.item.refId, args.item.amount);
-  }
-  await runAutoRestock();
-  return entryId;
+  return db.transaction('rw', bookingTables(), async () => {
+    // Never trust a copied value (quick-log passes an old diary item).
+    const { stockTaken: _ignored, ...rest } = args.item;
+    const item: DiaryItem = rest;
+    if (item.sourceType === 'inventory' && item.refId !== undefined) {
+      item.stockTaken = await takeFromInventory(item.refId, item.amount);
+    }
+    const entryId = await bookDiary(args.mealType, [item], args.at);
+    await runAutoRestock();
+    return entryId;
+  });
 }
 
 /**
@@ -71,47 +81,53 @@ export async function cookRecipe(args: {
   mealType: MealType;
   recipe: OwnRecipe;
   servingsCooked: number;
+  at?: string;
 }): Promise<CookResult> {
   const { recipe, servingsCooked, mealType } = args;
-  const subtracted: { id: string; amount: number }[] = [];
-  const inventory = await db.inventory.toArray();
+  return db.transaction('rw', bookingTables(), async () => {
+    const subtracted: { id: string; amount: number }[] = [];
+    const inventory = await db.inventory.toArray();
 
-  // Subtract matched ingredients (scaled to the cooked portion of the recipe).
-  const factor = servingsCooked / Math.max(1, recipe.servings);
-  for (const ing of recipe.ingredients) {
-    const match = inventory.find(
-      (inv) =>
-        inv.unit === ing.unit && namesMatch(inv.name, ing.name) && inv.amount > 0,
-    );
-    if (match?.id !== undefined) {
-      // Record what was actually taken so an undo can give exactly that back.
-      const take = Math.min(match.amount, ing.amount * factor);
-      await subtractInventory(match.id, take);
-      subtracted.push({ id: match.id, amount: take });
+    // Subtract matched ingredients (scaled to the cooked portion of the recipe).
+    const factor = servingsCooked / Math.max(1, recipe.servings);
+    for (const ing of recipe.ingredients) {
+      let need = round1(ing.amount * factor);
+      // Oldest stock first; a second package covers what the first lacks.
+      for (const stock of stockFor(inventory, ing)) {
+        if (!(need > 0) || stock.id === undefined) break;
+        const taken = await takeFromInventory(stock.id, need);
+        if (taken > 0) {
+          // Record what was actually taken so an undo gives exactly that back.
+          subtracted.push({ id: stock.id, amount: taken });
+          stock.amount = round1(stock.amount - taken);
+          need = round1(need - taken);
+        }
+      }
     }
-  }
 
-  const per = recipe.nutritionPerServing ?? EMPTY_NUTRIMENTS;
-  const scaled: Nutriments = {
-    kcal: per.kcal * servingsCooked,
-    protein: per.protein * servingsCooked,
-    carbs: per.carbs * servingsCooked,
-    fat: per.fat * servingsCooked,
-  };
-  const item: DiaryItem = {
-    name: recipe.title,
-    amount: servingsCooked,
-    unit: 'pcs',
-    kcal: scaled.kcal,
-    protein: scaled.protein,
-    carbs: scaled.carbs,
-    fat: scaled.fat,
-    sourceType: 'recipe',
-    refId: recipe.id,
-  };
-  const entryId = await bookDiary(mealType, [item]);
-  await runAutoRestock();
-  return { entryId, subtracted };
+    const per = recipe.nutritionPerServing ?? EMPTY_NUTRIMENTS;
+    const item: DiaryItem = {
+      name: recipe.title,
+      amount: servingsCooked,
+      unit: 'pcs',
+      kcal: round1(per.kcal * servingsCooked),
+      protein: round1(per.protein * servingsCooked),
+      carbs: round1(per.carbs * servingsCooked),
+      fat: round1(per.fat * servingsCooked),
+      sourceType: 'recipe',
+      refId: recipe.id,
+    };
+    const entryId = await bookDiary(mealType, [item], args.at);
+    await runAutoRestock();
+    return { entryId, subtracted };
+  });
+}
+
+/** Stock items an ingredient can be taken from, soonest best-before first. */
+function stockFor(inventory: InventoryItem[], ing: RecipeIngredient): InventoryItem[] {
+  return inventory
+    .filter((inv) => inv.unit === ing.unit && inv.amount > 0 && namesMatch(inv.name, ing.name))
+    .sort((a, b) => (a.bestBefore ?? '9999').localeCompare(b.bestBefore ?? '9999'));
 }
 
 export interface CookResult {
@@ -121,17 +137,25 @@ export interface CookResult {
 
 /** Reverse a cookRecipe call: drop the diary entry, return the ingredients. */
 export async function undoCook(result: CookResult): Promise<void> {
-  await db.diary.delete(result.entryId);
-  for (const s of result.subtracted) await restoreInventory(s.id, s.amount);
-  await runAutoRestock();
+  await db.transaction('rw', bookingTables(), async () => {
+    await db.diary.delete(result.entryId);
+    for (const s of result.subtracted) await restoreInventory(s.id, s.amount);
+    await runAutoRestock();
+  });
 }
 
-/** Reduce an inventory item's amount, clamping at 0. */
-export async function subtractInventory(id: string, amount: number): Promise<void> {
+/**
+ * Take up to `amount` from an inventory item. Returns what was really taken –
+ * less than asked for when the item holds less (or is gone).
+ */
+export async function takeFromInventory(id: string, amount: number): Promise<number> {
   const item = await db.inventory.get(id);
-  if (!item) return;
-  const next = Math.max(0, Math.round((item.amount - amount) * 10) / 10);
-  await db.inventory.update(id, { amount: next });
+  if (!item || !(amount > 0)) return 0;
+  const taken = round1(Math.max(0, Math.min(item.amount, amount)));
+  if (taken > 0) {
+    await db.inventory.update(id, { amount: round1(item.amount - taken) });
+  }
+  return taken;
 }
 
 /**
@@ -231,10 +255,10 @@ export async function addIngredientsToShoppingList(
 
 /** Give an amount back to stock (used when a diary entry is reduced/removed). */
 export async function restoreInventory(id: string, amount: number): Promise<void> {
+  if (!(amount > 0)) return;
   const item = await db.inventory.get(id);
-  if (!item) return;
-  const next = Math.max(0, Math.round((item.amount + amount) * 10) / 10);
-  await db.inventory.update(id, { amount: next });
+  if (!item) return; // deleted meanwhile – nothing to give it back to
+  await db.inventory.update(id, { amount: round1(item.amount + amount) });
 }
 
 /** Recalculate an entry's totals from its items. */
@@ -251,6 +275,12 @@ function recalcTotals(items: DiaryItem[]): Nutriments {
   );
 }
 
+/** What an item took from stock; older entries did not record it. */
+function takenFromStock(item: DiaryItem): number {
+  if (item.sourceType !== 'inventory' || item.refId === undefined) return 0;
+  return item.stockTaken ?? item.amount;
+}
+
 /**
  * Remove one item from a diary entry. Anything that came from stock is
  * credited back. The entry itself is deleted once its last item is gone.
@@ -259,21 +289,23 @@ export async function deleteDiaryItem(
   entryId: string,
   itemIndex: number,
 ): Promise<void> {
-  const entry = await db.diary.get(entryId);
-  const item = entry?.items[itemIndex];
-  if (!entry || !item) return;
+  await db.transaction('rw', bookingTables(), async () => {
+    const entry = await db.diary.get(entryId);
+    const item = entry?.items[itemIndex];
+    if (!entry || !item) return;
 
-  if (item.sourceType === 'inventory' && item.refId !== undefined) {
-    await restoreInventory(item.refId, item.amount);
-  }
+    if (item.refId !== undefined) {
+      await restoreInventory(item.refId, takenFromStock(item));
+    }
 
-  const items = entry.items.filter((_, i) => i !== itemIndex);
-  if (items.length === 0) {
-    await db.diary.delete(entryId);
-  } else {
-    await db.diary.update(entryId, { items, totals: recalcTotals(items) });
-  }
-  await runAutoRestock();
+    const items = entry.items.filter((_, i) => i !== itemIndex);
+    if (items.length === 0) {
+      await db.diary.delete(entryId);
+    } else {
+      await db.diary.update(entryId, { items, totals: recalcTotals(items) });
+    }
+    await runAutoRestock();
+  });
 }
 
 /**
@@ -285,37 +317,48 @@ export async function updateDiaryItemAmount(
   itemIndex: number,
   newAmount: number,
 ): Promise<void> {
-  const entry = await db.diary.get(entryId);
-  const item = entry?.items[itemIndex];
-  if (!entry || !item || newAmount <= 0 || item.amount <= 0) return;
+  await db.transaction('rw', bookingTables(), async () => {
+    const entry = await db.diary.get(entryId);
+    const item = entry?.items[itemIndex];
+    if (!entry || !item || !(newAmount > 0) || !(item.amount > 0)) return;
 
-  const factor = newAmount / item.amount;
-  const updated: DiaryItem = {
-    ...item,
-    amount: newAmount,
-    kcal: round1(item.kcal * factor),
-    protein: round1(item.protein * factor),
-    carbs: round1(item.carbs * factor),
-    fat: round1(item.fat * factor),
-  };
+    const factor = newAmount / item.amount;
+    const updated: DiaryItem = {
+      ...item,
+      amount: newAmount,
+      kcal: round1(item.kcal * factor),
+      protein: round1(item.protein * factor),
+      carbs: round1(item.carbs * factor),
+      fat: round1(item.fat * factor),
+    };
 
-  if (item.sourceType === 'inventory' && item.refId !== undefined) {
-    const delta = newAmount - item.amount;
-    if (delta > 0) await subtractInventory(item.refId, delta);
-    else if (delta < 0) await restoreInventory(item.refId, -delta);
-  }
+    if (item.sourceType === 'inventory' && item.refId !== undefined) {
+      const taken = takenFromStock(item);
+      if (newAmount > item.amount) {
+        // Eaten more: take the difference, as far as the stock goes.
+        const more = await takeFromInventory(item.refId, newAmount - item.amount);
+        updated.stockTaken = round1(taken + more);
+      } else {
+        // Eaten less: only what exceeds the new amount goes back.
+        const keep = Math.min(taken, newAmount);
+        await restoreInventory(item.refId, round1(taken - keep));
+        updated.stockTaken = round1(keep);
+      }
+    }
 
-  const items = entry.items.map((it, i) => (i === itemIndex ? updated : it));
-  await db.diary.update(entryId, { items, totals: recalcTotals(items) });
-  await runAutoRestock();
+    const items = entry.items.map((it, i) => (i === itemIndex ? updated : it));
+    await db.diary.update(entryId, { items, totals: recalcTotals(items) });
+    await runAutoRestock();
+  });
 }
 
 /** Log a previously eaten item again, unchanged (quick log). */
 export async function repeatDiaryItem(
   item: DiaryItem,
   mealType: MealType,
+  at?: string,
 ): Promise<string> {
-  return logFood({ mealType, item: { ...item } });
+  return logFood({ mealType, item: { ...item }, at });
 }
 
 export function isExpiringSoon(item: InventoryItem, days = 3): boolean {

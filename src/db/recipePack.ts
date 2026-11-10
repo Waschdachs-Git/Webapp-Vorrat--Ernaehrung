@@ -1,4 +1,5 @@
 import { db, cloudEnabled } from './database';
+import { caughtUpWithAccount } from './cloudState';
 import type { OwnRecipe } from './types';
 
 /**
@@ -633,47 +634,6 @@ export async function ensureRecipePack(): Promise<void> {
   );
   if (!installed) await db.recipesOwn.bulkAdd(RECIPE_PACK);
   writeFlag();
-}
-
-async function caughtUpWithAccount(): Promise<boolean> {
-  const user = await firstMatching(db.cloud.currentUser, (u) => !u.isLoading, 5000);
-  if (!user) return false;
-  if (!user.isLoggedIn) return true;
-  const synced = await firstMatching(
-    db.cloud.syncState,
-    (s) => s.phase === 'in-sync',
-    20000,
-  );
-  return synced !== undefined;
-}
-
-interface Subscribable<T> {
-  subscribe(next: (value: T) => void): { unsubscribe(): void };
-}
-
-/** First value passing `test`, or undefined after `timeoutMs`. */
-function firstMatching<T>(
-  source: Subscribable<T>,
-  test: (value: T) => boolean,
-  timeoutMs: number,
-): Promise<T | undefined> {
-  return new Promise((resolve) => {
-    let done = false;
-    let subscription: { unsubscribe(): void } | undefined;
-    const finish = (value: T | undefined) => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      subscription?.unsubscribe();
-      resolve(value);
-    };
-    const timer = window.setTimeout(() => finish(undefined), timeoutMs);
-    subscription = source.subscribe((value) => {
-      if (test(value)) finish(value);
-    });
-    // BehaviorSubjects emit during subscribe(), before `subscription` is set.
-    if (done) subscription.unsubscribe();
-  });
 }
 
 function normalize(title: string): string {

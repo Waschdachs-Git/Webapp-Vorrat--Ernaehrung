@@ -2,9 +2,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
+import pkg from './package.json';
+
+// Shown in the settings: which build is running on this device.
+const buildCommit = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7);
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_COMMIT__: JSON.stringify(buildCommit),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -26,7 +35,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // A new version activates immediately (skipWaiting + clientsClaim).
+      // Registration and the reload onto the new version are handled in
+      // src/lib/appUpdate.ts, so no register script is injected.
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Vorrat & Ernährung',

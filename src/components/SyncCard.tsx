@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { Cloud, RefreshCw } from 'lucide-react';
 import { db, ensureSeeded } from '@/db/database';
-import { userTables } from '@/db/transfer';
+import { settleLoginStash, stashAndClearLocalData } from '@/db/loginStash';
 import { startCloudLogin, useCloudUser, useSyncState } from '@/hooks/useCloud';
 import { Button, Card, cx } from './ui';
 
@@ -87,14 +87,25 @@ function LoggedIn({ email }: { email: string }): ReactNode {
 
 function LoggedOut(): ReactNode {
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Second device: start empty so nothing from here overwrites the account.
-  // While logged out nothing is tracked for sync, so clearing stays local.
+  // Second device: start empty so nothing from here mixes into the account.
+  // The device's data is parked first and comes back if the login is
+  // abandoned (see loginStash).
   const replaceAndLogin = async () => {
-    await db.transaction('rw', userTables(), () =>
-      Promise.all(userTables().map((t) => t.clear())),
-    );
-    startCloudLogin();
+    setError(null);
+    try {
+      await stashAndClearLocalData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Das hat nicht geklappt.');
+      return;
+    }
+    try {
+      await db.cloud.login();
+    } catch {
+      // Cancelled – settled below.
+    }
+    await settleLoginStash();
   };
 
   return (
@@ -102,7 +113,9 @@ function LoggedOut(): ReactNode {
       <p className="mb-4 text-[14px] text-muted">
         Melde dich auf iPhone und iPad mit derselben E-Mail an. Dann sind
         Vorrat, Einkaufsliste, Rezepte und Tagebuch auf beiden Geräten gleich.
-        Die Daten dieses Geräts kommen dabei in dein Konto.
+        Die Daten dieses Geräts kommen dabei in dein Konto – hat das Konto
+        schon Daten, werden beide zusammengelegt und das Profil von hier
+        ersetzt das im Konto.
       </p>
       <Button block onClick={startCloudLogin}>
         Anmelden
@@ -123,8 +136,14 @@ function LoggedOut(): ReactNode {
           </p>
           <p className="mt-1 text-[13px] text-muted">
             Alles, was hier gespeichert ist, wird gelöscht. Nach dem Anmelden
-            lädt die App die Daten aus deinem Konto.
+            lädt die App die Daten aus deinem Konto. Brichst du die Anmeldung
+            ab, bleiben die Daten dieses Geräts erhalten.
           </p>
+          {error && (
+            <p role="alert" className="mt-2 text-[13px] text-danger">
+              {error}
+            </p>
+          )}
           <div className="mt-3 flex gap-2">
             <Button variant="secondary" block onClick={() => setConfirmReplace(false)}>
               Abbrechen

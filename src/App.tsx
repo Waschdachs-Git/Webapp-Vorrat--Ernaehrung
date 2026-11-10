@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect, useRef, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -13,10 +13,13 @@ import {
   backfillCategories,
 } from '@/db/database';
 import { migrateLegacyDatabase } from '@/db/transfer';
+import { settleLoginStash } from '@/db/loginStash';
 import { useTheme } from '@/hooks/useTheme';
 import { SideNav, TabBar } from '@/components/TabBar';
 import { UndoToastProvider } from '@/components/UndoToast';
 import { CloudLoginSheet } from '@/components/CloudLoginSheet';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { reloadNow, useUpdateReady } from '@/lib/appUpdate';
 import { Today } from '@/pages/Today';
 import { Inventory } from '@/pages/Inventory';
 import { Onboarding } from '@/pages/Onboarding';
@@ -57,9 +60,16 @@ export function App(): ReactNode {
   );
 
   useEffect(() => {
+    // Ask the browser not to evict the database under storage pressure.
+    // Installed apps are usually granted this silently; a "no" changes nothing.
+    navigator.storage?.persist?.().catch(() => undefined);
+
     // Always release the splash, even if seeding fails, so the UI never hangs.
     migrateLegacyDatabase()
       .catch((err) => console.error('Migration fehlgeschlagen:', err))
+      // Data parked before a login that never happened comes back here.
+      .then(() => settleLoginStash())
+      .catch((err) => console.error('Wiederherstellung fehlgeschlagen:', err))
       .then(() => ensureSeeded())
       // Items created before categories existed get one classified here.
       .then(() => backfillCategories())
@@ -87,7 +97,13 @@ export function App(): ReactNode {
 
 function AppShell(): ReactNode {
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
   useEffect(prefetchPages, []);
+  // All tabs share one scroll container; without this a tab would open at
+  // the scroll position of the one left behind.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
   useEffect(() => {
     // Starter recipes, added once per account. Loaded on demand so the data
     // stays out of the main bundle.
@@ -100,8 +116,9 @@ function AppShell(): ReactNode {
     <UndoToastProvider>
       <div className="flex h-[100dvh] flex-col md:flex-row">
         <SideNav />
-        <main className="min-w-0 flex-1 overflow-y-auto pt-safe">
+        <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto pt-safe">
           <div className="mx-auto w-full max-w-3xl md:max-w-5xl md:pt-4">
+          <UpdateBanner />
           {/*
           No cross-fade between tabs. AnimatePresence mode="wait" waits for the
           leaving page to report its exit, and that report gets lost when the
@@ -111,6 +128,9 @@ function AppShell(): ReactNode {
           nothing anyway (DESIGN.md: motion has to carry meaning), so the cut
           is both more robust and more correct.
         */}
+        {/* A crash in one tab must not take the navigation down with it;
+            keyed by path so switching tabs starts clean. */}
+        <ErrorBoundary key={location.pathname} compact>
         <Suspense fallback={<div className="h-40" aria-busy="true" />}>
         <Routes location={location}>
           <Route path="/" element={<Navigate to="/heute" replace />} />
@@ -123,6 +143,7 @@ function AppShell(): ReactNode {
           <Route path="*" element={<Navigate to="/heute" replace />} />
         </Routes>
         </Suspense>
+        </ErrorBoundary>
           </div>
         </main>
         <div className="md:hidden">
@@ -130,6 +151,27 @@ function AppShell(): ReactNode {
         </div>
       </div>
     </UndoToastProvider>
+  );
+}
+
+/** A new version is active; the reload waits for the user (see appUpdate). */
+function UpdateBanner(): ReactNode {
+  const ready = useUpdateReady();
+  if (!ready) return null;
+  return (
+    <div
+      role="status"
+      className="mx-5 mb-1 mt-2 flex items-center justify-between gap-3 rounded-[12px] bg-accent-soft px-3.5 py-1.5 md:mt-0"
+    >
+      <p className="text-[14px] text-text">Neue Version bereit</p>
+      <button
+        type="button"
+        onClick={reloadNow}
+        className="min-h-[36px] shrink-0 text-[14px] font-semibold text-accent active:opacity-60"
+      >
+        Jetzt laden
+      </button>
+    </div>
   );
 }
 

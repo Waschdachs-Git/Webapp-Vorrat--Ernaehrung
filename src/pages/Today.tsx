@@ -12,7 +12,8 @@ import {
 } from '@/components/DiaryItemSheet';
 import { useUndo } from '@/components/UndoToast';
 import { AddButton, Section, cx } from '@/components/ui';
-import { useToday } from '@/hooks/useToday';
+import { useDiaryDay } from '@/hooks/useToday';
+import { useTodayISO } from '@/hooks/useDay';
 import {
   defaultMealType,
   deleteDiaryItem,
@@ -49,7 +50,9 @@ interface LogRequest {
 }
 
 export function Today(): ReactNode {
-  const { targets, consumed, remaining, entries, profile } = useToday();
+  // Re-renders at midnight and when the app returns to the foreground.
+  const today = useTodayISO();
+  const { targets, consumed, remaining, entries, profile } = useDiaryDay(today);
   const [log, setLog] = useState<LogRequest | null>(null);
   const [editTarget, setEditTarget] = useState<DiaryItemRef | null>(null);
   const [cookTarget, setCookTarget] = useState<OwnRecipe | null>(null);
@@ -83,6 +86,7 @@ export function Today(): ReactNode {
     foods,
     recipes,
     recentDiary,
+    today,
   ]);
 
   // "Zuletzt gegessen" – deduplicated by name, newest first.
@@ -124,7 +128,7 @@ export function Today(): ReactNode {
     }
   };
 
-  const todayLabel = new Date().toLocaleDateString('de-DE', {
+  const todayLabel = new Date(`${today}T12:00:00`).toLocaleDateString('de-DE', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -157,7 +161,7 @@ export function Today(): ReactNode {
           <DayBalance consumed={consumed} targets={targets} />
           <div className="hidden md:block">{suggestionList}</div>
           <div className="hidden md:block">
-            <WeekStrip goal={targets.kcal} />
+            <WeekStrip goal={targets.kcal} today={today} />
           </div>
         </div>
 
@@ -246,7 +250,7 @@ export function Today(): ReactNode {
 
           <div className="md:hidden">{suggestionList}</div>
           <div className="md:hidden">
-            <WeekStrip goal={targets.kcal} />
+            <WeekStrip goal={targets.kcal} today={today} />
           </div>
         </div>
       </div>
@@ -397,16 +401,16 @@ function SuggestionRow({
 }
 
 /** Last seven days against the goal – plain CSS, no chart library needed. */
-function WeekStrip({ goal }: { goal: number }): ReactNode {
+function WeekStrip({ goal, today }: { goal: number; today: string }): ReactNode {
   const days = useMemo(() => {
     const out: string[] = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
+      const d = new Date(`${today}T12:00:00`);
       d.setDate(d.getDate() - i);
       out.push(toISODate(d));
     }
     return out;
-  }, []);
+  }, [today]);
 
   const totals = useLiveQuery(async () => {
     const { start } = localDayBounds(days[0]!);

@@ -64,7 +64,11 @@ export function Profile(): ReactNode {
 
   const saveEdit = async () => {
     if (!draft) return;
-    await db.profile.put(draftToProfile(draft, PROFILE_ID));
+    // Update, not put: replacing the whole row would silently drop what the
+    // form does not show – the manually adjusted targets.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...fields } = draftToProfile(draft, PROFILE_ID);
+    await db.profile.update(PROFILE_ID, fields);
     setEditOpen(false);
   };
 

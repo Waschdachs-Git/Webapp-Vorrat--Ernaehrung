@@ -118,6 +118,13 @@ export interface DiaryItem {
   fat: number;
   sourceType: DiarySourceType;
   refId?: string;
+  /**
+   * How much was really taken from stock when this was logged (inventory
+   * items only). Less than `amount` when the stock ran out, so undoing the
+   * entry gives back exactly this and not more. Missing on older entries,
+   * which are treated as `amount`.
+   */
+  stockTaken?: number;
 }
 
 export interface DiaryEntry {
