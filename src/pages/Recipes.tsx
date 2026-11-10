@@ -32,7 +32,7 @@ import {
   type ApiOutcome,
 } from '@/lib/spoonacular';
 import { isExpiringSoon } from '@/lib/actions';
-import { namesMatch } from '@/lib/match';
+import { isSameFood } from '@/lib/match';
 import type { OwnRecipe, Profile } from '@/db/types';
 
 type Mode = 'cook' | 'search' | 'own';
@@ -151,11 +151,11 @@ function CookMode({
     return own
       .map((r) => {
         const matched = r.ingredients.filter((ing) =>
-          inStock.some((inv) => namesMatch(inv.name, ing.name)),
+          inStock.some((inv) => isSameFood(inv, ing.name)),
         );
         const expiringHit = r.ingredients.some((ing) =>
           inStock.some(
-            (inv) => namesMatch(inv.name, ing.name) && isExpiringSoon(inv),
+            (inv) => isSameFood(inv, ing.name) && isExpiringSoon(inv),
           ),
         );
         return {

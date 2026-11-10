@@ -7,7 +7,7 @@ import type {
 } from '@/db/types';
 import { daysUntil } from './date';
 import { classifyByName } from './categories';
-import { namesMatch } from './match';
+import { isSameFood } from './match';
 
 export type RecommendationAction =
   | { type: 'log'; inventoryId: string }
@@ -120,7 +120,7 @@ export function buildRecommendations(args: {
       .map((r) => ({
         recipe: r,
         inStock: r.ingredients.filter((ing) =>
-          inventory.some((inv) => inv.amount > 0 && namesMatch(inv.name, ing.name)),
+          inventory.some((inv) => inv.amount > 0 && isSameFood(inv, ing.name)),
         ).length,
         recent: recentNames.has(r.title.toLowerCase()),
       }))

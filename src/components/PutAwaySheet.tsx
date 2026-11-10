@@ -18,7 +18,7 @@ import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
 import { nowISO } from '@/lib/date';
 import { formatAmount, parseDecimal } from '@/lib/format';
-import { namesMatch } from '@/lib/match';
+import { namesMatch, sharesFoodWord } from '@/lib/match';
 import type { InventoryItem, ShoppingItem, Unit } from '@/db/types';
 
 type Step = 'scan' | 'form';
@@ -383,17 +383,15 @@ async function findExisting(barcode?: string, name?: string): Promise<InventoryI
 
 /**
  * Which list entry a scanned product most likely is: "Fettarme H-Milch 1,5 %"
- * is the "Milch" on the list. Falls back to a shared word, so the brand-heavy
- * product names still find their plain entry.
+ * is the "Milch" on the list. Failing a proper match, an entry that shares a
+ * food word ("Haferflocken kernig" for "Bio Haferflocken zart") – the user
+ * sees and can change the suggestion, so a near miss beats none.
  */
 function bestEntry(name: string, entries: ShoppingItem[]): ShoppingItem | undefined {
   if (!name.trim()) return undefined;
-  const direct = entries.find((e) => namesMatch(e.name, name));
-  if (direct) return direct;
-  const words = (s: string) => s.toLowerCase().split(/[^a-zäöüß]+/).filter((w) => w.length >= 4);
-  const mine = words(name);
-  return entries.find((e) =>
-    words(e.name).some((w) => mine.some((m) => m.includes(w) || w.includes(m))),
+  return (
+    entries.find((e) => namesMatch(e.name, name)) ??
+    entries.find((e) => sharesFoodWord(e.name, name))
   );
 }
 

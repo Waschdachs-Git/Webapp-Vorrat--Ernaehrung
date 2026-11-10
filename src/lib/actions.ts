@@ -1,6 +1,6 @@
 import { classifyWithHints, db } from '@/db/database';
 import { nowISO, todayISO } from './date';
-import { namesMatch } from './match';
+import { isSameFood } from './match';
 import {
   addNutriments,
   EMPTY_NUTRIMENTS,
@@ -126,7 +126,7 @@ export async function cookRecipe(args: {
 /** Stock items an ingredient can be taken from, soonest best-before first. */
 function stockFor(inventory: InventoryItem[], ing: RecipeIngredient): InventoryItem[] {
   return inventory
-    .filter((inv) => inv.unit === ing.unit && inv.amount > 0 && namesMatch(inv.name, ing.name))
+    .filter((inv) => inv.unit === ing.unit && inv.amount > 0 && isSameFood(inv, ing.name))
     .sort((a, b) => (a.bestBefore ?? '9999').localeCompare(b.bestBefore ?? '9999'));
 }
 
@@ -236,7 +236,7 @@ export async function addIngredientsToShoppingList(
   const open = (await db.shoppingList.toArray()).filter((s) => !s.checked);
   const added: string[] = [];
   for (const ing of ingredients) {
-    if (open.some((s) => namesMatch(s.name, ing.name))) continue;
+    if (open.some((s) => isSameFood(s, ing.name))) continue;
     const entry = {
       name: ing.name,
       category: await classifyWithHints(ing.name),
