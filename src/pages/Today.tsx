@@ -12,7 +12,7 @@ import {
 } from '@/components/DiaryItemSheet';
 import { useUndo } from '@/components/UndoToast';
 import { AddButton, Section, cx } from '@/components/ui';
-import { useDiaryDay } from '@/hooks/useToday';
+import { isUsableEntry, useDiaryDay } from '@/hooks/useToday';
 import { useTodayISO } from '@/hooks/useDay';
 import {
   defaultMealType,
@@ -62,7 +62,8 @@ export function Today(): ReactNode {
   const foods = useLiveQuery(() => db.foodsLocal.toArray(), []);
   const recipes = useLiveQuery(() => db.recipesOwn.toArray(), []);
   const recentDiary = useLiveQuery(
-    () => db.diary.orderBy('datetime').reverse().limit(30).toArray(),
+    async () =>
+      (await db.diary.orderBy('datetime').reverse().limit(30).toArray()).filter(isUsableEntry),
     [],
   );
 
@@ -417,7 +418,7 @@ function WeekStrip({ goal, today }: { goal: number; today: string }): ReactNode 
     const { end } = localDayBounds(days[6]!);
     const rows = await db.diary.where('datetime').between(start, end, true, true).toArray();
     const map = new Map<string, number>();
-    for (const r of rows) {
+    for (const r of rows.filter(isUsableEntry)) {
       const key = toISODate(new Date(r.datetime));
       map.set(key, (map.get(key) ?? 0) + r.totals.kcal);
     }
@@ -494,7 +495,8 @@ function groupByMeal(entries: DiaryEntry[]): Record<MealType, DiaryEntry[]> {
   for (const e of [...entries].sort((a, b) =>
     a.datetime.localeCompare(b.datetime),
   )) {
-    groups[e.mealType].push(e);
+    // An unknown meal (data from elsewhere) is shown under snacks, not lost.
+    (groups[e.mealType] ?? groups.snack).push(e);
   }
   return groups;
 }

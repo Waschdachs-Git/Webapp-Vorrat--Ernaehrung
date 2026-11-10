@@ -10,6 +10,7 @@ import { lookupBarcode } from '@/lib/openfoodfacts';
 import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
 import type { InventoryItem, MealType, Nutriments, Unit } from '@/db/types';
 import { useUndo } from './UndoToast';
+import { isUsableEntry } from '@/hooks/useToday';
 import { formatAmount, relativeBestBefore, unitLabel, parseDecimal } from '@/lib/format';
 import { daysUntil } from '@/lib/date';
 
@@ -75,7 +76,7 @@ export function LogFoodSheet({
   const lastAmounts = useLiveQuery(async () => {
     const recent = await db.diary.orderBy('datetime').reverse().limit(150).toArray();
     const map = new Map<string, number>();
-    for (const e of recent) {
+    for (const e of recent.filter(isUsableEntry)) {
       for (const it of e.items) {
         const k = it.name.toLowerCase();
         if (!map.has(k)) map.set(k, it.amount);

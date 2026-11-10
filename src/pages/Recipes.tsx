@@ -513,13 +513,17 @@ function SpoonacularDetailSheet({
   const settings = useSettings();
   const [detail, setDetail] = useState<RecipeDetail | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | string>('idle');
-  const [savedMsg, setSavedMsg] = useState(false);
+  // Saved once per opened recipe – repeated taps must not create copies.
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // Load the recipe detail whenever the sheet opens for a new id.
   useEffect(() => {
     if (id === null) return;
     let cancelled = false;
     setDetail(null);
+    setSaved(false);
+    setSaveError(false);
     setState('loading');
     new SpoonacularClient(settings.spoonacularApiKey)
       .recipeInformation(id)
@@ -538,7 +542,7 @@ function SpoonacularDetailSheet({
   }, [id, settings.spoonacularApiKey]);
 
   const saveAsOwn = async () => {
-    if (!detail) return;
+    if (!detail || saved) return;
     const recipe: Omit<OwnRecipe, 'id'> = {
       title: detail.title,
       servings: detail.servings || 1,
@@ -552,9 +556,14 @@ function SpoonacularDetailSheet({
       nutritionPerServing: detail.nutritionPerServing,
       imageUrl: detail.image,
     };
-    await db.recipesOwn.add(recipe as OwnRecipe);
-    setSavedMsg(true);
-    window.setTimeout(() => setSavedMsg(false), 1500);
+    setSaveError(false);
+    try {
+      await db.recipesOwn.add(recipe as OwnRecipe);
+      setSaved(true);
+    } catch (err) {
+      console.error('Rezept speichern fehlgeschlagen:', err);
+      setSaveError(true);
+    }
   };
 
   return (
@@ -615,10 +624,15 @@ function SpoonacularDetailSheet({
                 <ExternalLink size={16} /> Original
               </a>
             )}
-            <Button block onClick={saveAsOwn}>
-              {savedMsg ? 'Gespeichert' : 'Als Rezept speichern'}
+            <Button block onClick={saveAsOwn} disabled={saved}>
+              {saved ? 'In „Meine Rezepte“ gespeichert' : 'Als Rezept speichern'}
             </Button>
           </div>
+          {saveError && (
+            <p role="alert" className="text-[13.5px] text-danger">
+              Konnte nicht gespeichert werden. Bitte noch einmal versuchen.
+            </p>
+          )}
         </div>
       ) : null}
     </BottomSheet>

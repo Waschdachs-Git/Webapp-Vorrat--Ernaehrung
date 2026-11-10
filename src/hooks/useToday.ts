@@ -23,7 +23,10 @@ export function useDiaryDay(day: string): TodayData {
   // Range query over the `datetime` index instead of scanning the whole table.
   const entries = useLiveQuery(async () => {
     const { start, end } = localDayBounds(day);
-    return db.diary.where('datetime').between(start, end, true, true).toArray();
+    const rows = await db.diary.where('datetime').between(start, end, true, true).toArray();
+    // Rows can arrive through sync from another version of the app; one that
+    // is malformed must not take the whole page down.
+    return rows.filter(isUsableEntry);
   }, [day]);
 
   const loading = profile === undefined || entries === undefined;
@@ -46,4 +49,14 @@ export function useDiaryDay(day: string): TodayData {
     entries: list,
     loading,
   };
+}
+
+/** The parts of a diary entry the pages rely on. */
+export function isUsableEntry(e: DiaryEntry): boolean {
+  return (
+    typeof e.datetime === 'string' &&
+    Array.isArray(e.items) &&
+    e.items.every((i) => typeof i?.name === 'string' && typeof i.kcal === 'number') &&
+    typeof e.totals?.kcal === 'number'
+  );
 }

@@ -89,7 +89,7 @@ export async function cookRecipe(args: {
     const inventory = await db.inventory.toArray();
 
     // Subtract matched ingredients (scaled to the cooked portion of the recipe).
-    const factor = servingsCooked / Math.max(1, recipe.servings);
+    const factor = servingsCooked / (recipe.servings > 0 ? recipe.servings : 1);
     for (const ing of recipe.ingredients) {
       let need = round1(ing.amount * factor);
       // Oldest stock first; a second package covers what the first lacks.
