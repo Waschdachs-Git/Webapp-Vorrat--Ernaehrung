@@ -22,7 +22,11 @@ export function PageHeader({
         </h1>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      {subtitle && <div className="mt-1.5 text-[15px] text-muted">{subtitle}</div>}
+      {typeof subtitle === 'string' ? (
+        <p className="mt-1.5 text-[15px] text-muted">{subtitle}</p>
+      ) : (
+        subtitle && <div className="mt-1.5 text-[15px] text-muted">{subtitle}</div>
+      )}
     </header>
   );
 }

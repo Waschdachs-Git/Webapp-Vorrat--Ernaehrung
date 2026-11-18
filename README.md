@@ -14,10 +14,14 @@ Details zu Produkt und Design: [`PRODUCT.md`](./PRODUCT.md) ·
 ## Features
 
 - **Heute** – übrige Kalorien, Makro-Balken, Mahlzeiten (der Tag wechselt um
-  Mitternacht auch bei offener App),
+  Mitternacht auch bei offener App). Mit den Pfeilen neben dem Datum – oder
+  per Tipp auf einen Balken der Wochenleiste – lassen sich vergangene Tage
+  ansehen und Vergessenes nachtragen,
   Empfehlungen (Tagesziel füllen / Ablaufendes verwerten / Abwechslung).
 - **Vorrat** – Barcode-Scan (Open Food Facts, kein Key) oder manuell, Lagerorte,
-  MHD-/„wenig"-Badges, Grundnahrungsmittel mit Mindestbestand.
+  MHD-/„wenig"-Badges, Grundnahrungsmittel mit Mindestbestand. Ein Produkt, das
+  schon da ist, wird beim Scannen zum Bestand dazugezählt. Leere Artikel stehen
+  unter „Aufgebraucht" und kommen mit einem Tipp auf die Einkaufsliste.
 - **Einkauf** – manuell + Auto-Nachkauf, Abhaken per Swipe. Nach dem Einkauf
   „Zum Vorrat hinzufügen“: Produkte nacheinander scannen, Menge (aus der
   Packungsgröße vorausgefüllt) und MHD prüfen; der Listeneintrag wird

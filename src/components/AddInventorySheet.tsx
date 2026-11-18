@@ -71,7 +71,7 @@ export function AddInventorySheet({
         next.amount = String(product.packageSize.amount);
       }
       setDraft(next);
-      setScanInfo('Schon im Vorrat – Menge und Mindesthaltbarkeit der neuen Packung prüfen.');
+      setScanInfo('Menge und Mindesthaltbarkeit der neuen Packung prüfen.');
     } else if (product) {
       setDraft(draftFromProduct(product, code));
       // Replace the "searching" notice instead of leaving it standing.
@@ -207,7 +207,13 @@ export function AddInventorySheet({
               />
             </label>
           )}
-          <InventoryFields draft={draft} setDraft={setDraft} />
+          {/* Adding a package to known stock: amount and date matter, the
+              rest was settled the first time. */}
+          <InventoryFields
+            draft={draft}
+            setDraft={setDraft}
+            layout={!editItem && existing ? 'quick' : 'full'}
+          />
 
           {error && (
             <p role="alert" className="text-[13.5px] text-danger">
