@@ -4,7 +4,7 @@ import { BottomSheet } from './BottomSheet';
 import { Button, Field, Input } from './ui';
 import { deleteDiaryItem, updateDiaryItemAmount } from '@/lib/actions';
 import type { DiaryItem } from '@/db/types';
-import { formatAmount, unitLabel, parseDecimal } from '@/lib/format';
+import { formatDiaryAmount, unitLabel, parseDecimal } from '@/lib/format';
 
 export interface DiaryItemRef {
   entryId: string;
@@ -31,6 +31,7 @@ export function DiaryItemSheet({
 
   const fromStock =
     target?.item.sourceType === 'inventory' && target.item.refId !== undefined;
+  const isRecipe = target?.item.sourceType === 'recipe';
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -67,12 +68,12 @@ export function DiaryItemSheet({
       {target && (
         <div className="flex flex-col gap-4">
           <p className="text-[13px] text-muted">
-            Aktuell gebucht: {formatAmount(target.item.amount, target.item.unit)} ·{' '}
+            Aktuell gebucht: {formatDiaryAmount(target.item)} ·{' '}
             {Math.round(target.item.kcal)} kcal
           </p>
 
           <Field
-            label={`Menge (${unitLabel(target.item.unit)})`}
+            label={isRecipe ? 'Portionen' : `Menge (${unitLabel(target.item.unit)})`}
             hint={
               fromStock
                 ? 'Die Differenz wird im Vorrat mit verrechnet.'

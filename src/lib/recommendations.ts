@@ -142,7 +142,7 @@ export function buildRecommendations(args: {
           (best.inStock === best.recipe.ingredients.length
             ? ' · alle Zutaten da'
             : best.inStock
-              ? ` · ${best.recipe.ingredients.length - best.inStock} Zutat(en) fehlen`
+              ? ` · ${missingLabel(best.recipe.ingredients.length - best.inStock)}`
               : ''),
         action: { type: 'cook', recipeId: best.recipe.id },
         actionLabel: 'Kochen',
@@ -171,6 +171,10 @@ export function buildRecommendations(args: {
   }
 
   return recs.slice(0, 3);
+}
+
+function missingLabel(n: number): string {
+  return n === 1 ? '1 Zutat fehlt' : `${n} Zutaten fehlen`;
 }
 
 function ratio(part: number, whole: number): number {

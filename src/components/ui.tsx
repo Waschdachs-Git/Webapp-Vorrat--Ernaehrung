@@ -87,8 +87,9 @@ export function Field({
 }
 
 // Filled fields (iOS style) instead of outlined boxes; focus brings a ring.
+// 16px text: anything smaller makes iOS zoom into the field on focus.
 const inputBase =
-  'w-full min-h-[44px] rounded-[12px] border border-transparent bg-surface-2 px-3.5 text-[15px] text-text placeholder:text-faint outline-none transition-colors focus:border-accent/50 focus:bg-surface focus:ring-4 focus:ring-accent/10';
+  'w-full min-h-[44px] rounded-[12px] border border-transparent bg-surface-2 px-3.5 text-[16px] text-text placeholder:text-faint outline-none transition-colors focus:border-accent/50 focus:bg-surface focus:ring-4 focus:ring-accent/10';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (

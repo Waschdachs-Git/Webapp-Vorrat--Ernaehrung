@@ -64,8 +64,10 @@ export function UndoToastProvider({
         {toast && (
           <motion.div
             key={toast.id}
-            // Sits just above the tab bar so it never covers the primary nav.
-            className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+68px)] md:bottom-6 md:left-[88px] lg:left-60 z-40 flex justify-center px-5"
+            // Sits just above the tab bar so it never covers the primary nav,
+            // and above sheets (z-50): a sheet that is still closing must not
+            // hide the one chance to undo.
+            className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+68px)] z-[60] flex justify-center px-5 md:bottom-6 md:left-[88px] lg:left-60"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
@@ -73,15 +75,16 @@ export function UndoToastProvider({
           >
             <div
               role="status"
-              className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-[18px] bg-surface shadow-card px-4 py-3 shadow-card"
+              // Inverted – ink on the paper ground – so it cannot be missed.
+              className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-[14px] bg-text py-2 pl-4 pr-2 shadow-pop"
             >
-              <span className="truncate text-[14px] text-text">
+              <span className="truncate text-[14px] text-bg">
                 {toast.message}
               </span>
               <button
                 type="button"
                 onClick={runUndo}
-                className="flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium text-accent active:bg-accent-soft"
+                className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 text-[14px] font-semibold text-bg underline decoration-bg/40 underline-offset-4 active:bg-bg/15"
               >
                 <Undo2 size={16} /> Rückgängig
               </button>

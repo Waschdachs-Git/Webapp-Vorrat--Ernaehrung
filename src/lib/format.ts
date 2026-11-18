@@ -26,6 +26,25 @@ export function formatAmount(amount: number, unit: Unit): string {
   return `${trim(amount)} ${unit}`;
 }
 
+/** "1 Portion", "2 Portionen", "0,5 Portionen". */
+export function formatServings(n: number): string {
+  return `${trim(n)} ${n === 1 ? 'Portion' : 'Portionen'}`;
+}
+
+/**
+ * The amount of a diary item as it reads best: a cooked recipe is booked in
+ * servings, which the generic "pcs" unit would show as "Stück".
+ */
+export function formatDiaryAmount(item: {
+  amount: number;
+  unit: Unit;
+  sourceType?: string;
+}): string {
+  return item.sourceType === 'recipe'
+    ? formatServings(item.amount)
+    : formatAmount(item.amount, item.unit);
+}
+
 /**
  * Best-before as a relative phrase. Absolute dates are hard to scan in a
  * list — the exact date stays in the detail view.

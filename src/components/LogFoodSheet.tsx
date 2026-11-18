@@ -7,7 +7,12 @@ import { LazyBarcodeScanner } from './LazyBarcodeScanner';
 import { Button, Field, Input, TextTabs, cx } from './ui';
 import { scaleNutriments } from '@/lib/nutrition';
 import { lookupBarcode } from '@/lib/openfoodfacts';
-import { deleteDiaryItem, diaryItemFromPer100, logFood } from '@/lib/actions';
+import {
+  bookingTimeFor,
+  deleteDiaryItem,
+  diaryItemFromPer100,
+  logFood,
+} from '@/lib/actions';
 import type { InventoryItem, MealType, Nutriments, Unit } from '@/db/types';
 import { useUndo } from './UndoToast';
 import { isUsableEntry } from '@/hooks/useToday';
@@ -45,12 +50,15 @@ export function LogFoodSheet({
   onClose,
   defaultMeal,
   preset,
+  day,
 }: {
   open: boolean;
   onClose: () => void;
   defaultMeal: MealType;
   /** Jump straight to the portion step for this stock item. */
   preset?: InventoryItem;
+  /** Book on this earlier day (YYYY-MM-DD) instead of now. */
+  day?: string;
 }): ReactNode {
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [source, setSource] = useState<Source>('inventory');
@@ -121,6 +129,7 @@ export function LogFoodSheet({
           picked={picked}
           meal={meal}
           setMeal={setMeal}
+          day={day}
           onBack={() => setPicked(null)}
           onDone={close}
         />
@@ -131,7 +140,7 @@ export function LogFoodSheet({
   return (
     <BottomSheet open={open} onClose={close} title="Essen loggen">
       <div className="flex flex-col gap-4">
-        <MealChip value={meal} onChange={setMeal} />
+        <MealChip value={meal} onChange={setMeal} day={day} />
 
         <TextTabs
           value={source}
@@ -298,12 +307,14 @@ function PortionStep({
   picked,
   meal,
   setMeal,
+  day,
   onBack,
   onDone,
 }: {
   picked: Picked;
   meal: MealType;
   setMeal: (m: MealType) => void;
+  day?: string;
   onBack: () => void;
   onDone: () => void;
 }): ReactNode {
@@ -339,6 +350,7 @@ function PortionStep({
       }
       const entryId = await logFood({
         mealType: meal,
+        at: day ? bookingTimeFor(day, meal) : undefined,
         item: diaryItemFromPer100({
           name: picked.name,
           amount, // in the item's own unit -> what gets subtracted from stock
@@ -363,7 +375,7 @@ function PortionStep({
 
   return (
     <div className="flex flex-col gap-4">
-      <MealChip value={meal} onChange={setMeal} />
+      <MealChip value={meal} onChange={setMeal} day={day} />
 
       <Field label={`Menge (${unitLabel(picked.unit)})`}>
         <Input
@@ -605,12 +617,15 @@ function match(name: string, query: string): boolean {
 function MealChip({
   value,
   onChange,
+  day,
 }: {
   value: MealType;
   onChange: (m: MealType) => void;
+  /** An earlier day the entry is added to – said right here, not hidden. */
+  day?: string;
 }): ReactNode {
   return (
-    <label className="flex items-center gap-2 text-[14px] text-muted">
+    <label className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-muted">
       Für
       <span className="relative">
         <select
@@ -631,6 +646,16 @@ function MealChip({
           className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-accent"
         />
       </span>
+      {day && (
+        <span className="font-medium text-text">
+          am{' '}
+          {new Date(`${day}T12:00:00`).toLocaleDateString('de-DE', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+          })}
+        </span>
+      )}
     </label>
   );
 }

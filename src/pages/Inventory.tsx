@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, Package, X, ChevronDown } from 'lucide-react';
+import { Search, Package, X, ChevronDown, Check, ShoppingCart } from 'lucide-react';
 import { db } from '@/db/database';
 import { PageHeader } from '@/components/PageHeader';
 import { AddInventorySheet } from '@/components/AddInventorySheet';
@@ -8,7 +8,8 @@ import { SwipeRow } from '@/components/SwipeRow';
 import { AddButton, EmptyState, Input, Section, TextTabs } from '@/components/ui';
 import { useUndo } from '@/components/UndoToast';
 import { isExpiringSoon, isLowStaple } from '@/lib/actions';
-import { daysUntil } from '@/lib/date';
+import { daysUntil, nowISO } from '@/lib/date';
+import { namesMatch } from '@/lib/match';
 import { useTodayISO } from '@/hooks/useDay';
 import { formatAmount, relativeBestBefore } from '@/lib/format';
 import {
@@ -39,6 +40,8 @@ interface Group {
 type Urgency = 'expired' | 'soon' | 'low' | 'none';
 
 function urgencyOf(item: InventoryItem): Urgency {
+  // Nothing left: a best-before date no longer means anything.
+  if (!(item.amount > 0)) return isLowStaple(item) ? 'low' : 'none';
   const days = item.bestBefore ? daysUntil(item.bestBefore) : null;
   if (days !== null && days < 0) return 'expired';
   if (isExpiringSoon(item)) return 'soon';
@@ -65,6 +68,7 @@ function byUrgencyThenDate(a: InventoryItem, b: InventoryItem): number {
 
 export function Inventory(): ReactNode {
   const items = useLiveQuery(() => db.inventory.toArray(), []);
+  const shopping = useLiveQuery(() => db.shoppingList.toArray(), []);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -115,9 +119,20 @@ export function Inventory(): ReactNode {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, query, filter, today]);
 
+  // Used-up items get their own section at the end: they are not stock any
+  // more, but the obvious next step for them is the shopping list.
+  const usedUp = useMemo(
+    () =>
+      visible
+        .filter((i) => !(i.amount > 0))
+        .sort((a, b) => a.name.localeCompare(b.name, 'de')),
+    [visible],
+  );
+
   const groups = useMemo<Group[]>(() => {
     const buckets = new Map<string, InventoryItem[]>();
     for (const i of visible) {
+      if (!(i.amount > 0)) continue;
       const key =
         groupMode === 'location' ? i.location : (i.category ?? 'other');
       const list = buckets.get(key);
@@ -148,8 +163,42 @@ export function Inventory(): ReactNode {
     await db.inventory.delete(item.id);
     // Re-adding with the original id keeps diary references intact.
     showUndo(`„${item.name}“ gelöscht`, async () => {
-      await db.inventory.add(item);
+      await db.inventory.put(item);
     });
+  };
+
+  const isListed = (item: InventoryItem) =>
+    (shopping ?? []).some(
+      (s) => !s.checked && (s.linkedInventoryId === item.id || namesMatch(s.name, item.name)),
+    );
+
+  const putOnList = async (item: InventoryItem) => {
+    const id = await db.shoppingList.add({
+      name: item.name,
+      category: item.category,
+      checked: false,
+      source: 'manual',
+      // Linked, so putting the new package away refills this very item.
+      linkedInventoryId: item.id,
+      addedAt: nowISO(),
+    });
+    showUndo(`„${item.name}“ steht auf der Einkaufsliste`, async () => {
+      await db.shoppingList.delete(id);
+    });
+  };
+
+  // Staples stay: they are the template for the automatic restock.
+  const removable = usedUp.filter((i) => !i.isStaple);
+  const clearUsedUp = async () => {
+    const gone = removable.filter((i) => i.id !== undefined);
+    if (gone.length === 0) return;
+    await db.inventory.bulkDelete(gone.map((i) => i.id!));
+    showUndo(
+      gone.length === 1 ? '1 Artikel entfernt' : `${gone.length} Artikel entfernt`,
+      async () => {
+        await db.inventory.bulkPut(gone);
+      },
+    );
   };
 
   const openEdit = (item: InventoryItem) => {
@@ -271,6 +320,44 @@ export function Inventory(): ReactNode {
                   </ul>
                 </Section>
               ))}
+              {usedUp.length > 0 && (
+                <Section
+                  title="Aufgebraucht"
+                  className="mb-9 break-inside-avoid"
+                  action={
+                    removable.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={clearUsedUp}
+                        className="min-h-[40px] text-[14px] font-medium text-muted active:opacity-60"
+                      >
+                        {removable.length === usedUp.length ? 'Alle entfernen' : 'Übrige entfernen'}
+                      </button>
+                    ) : undefined
+                  }
+                >
+                  {usedUp.some((i) => i.isStaple) && (
+                    <p className="pt-2 text-[12.5px] text-faint">
+                      Grundnahrungsmittel bleiben stehen – sie kommen beim Nachkauf
+                      von selbst auf die Liste.
+                    </p>
+                  )}
+                  <ul>
+                    {usedUp.map((item) => (
+                      <li key={item.id} className="border-b border-border last:border-b-0">
+                        <SwipeRow className="" onSwipeLeft={() => removeItem(item)}>
+                          <UsedUpRow
+                            item={item}
+                            listed={isListed(item)}
+                            onOpen={() => openEdit(item)}
+                            onList={() => putOnList(item)}
+                          />
+                        </SwipeRow>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
             </div>
           )}
         </div>
@@ -283,6 +370,47 @@ export function Inventory(): ReactNode {
         onClose={() => setAddOpen(false)}
         editItem={editItem}
       />
+    </div>
+  );
+}
+
+/** A used-up item: open it, or put it straight on the shopping list. */
+function UsedUpRow({
+  item,
+  listed,
+  onOpen,
+  onList,
+}: {
+  item: InventoryItem;
+  listed: boolean;
+  onOpen: () => void;
+  onList: () => void;
+}): ReactNode {
+  return (
+    <div className="flex min-h-[56px] items-center gap-3 bg-bg">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-h-[56px] min-w-0 flex-1 flex-col justify-center py-2 text-left active:bg-surface-2"
+      >
+        <span className="block truncate text-[16px] text-muted">{item.name}</span>
+        <span className="block text-[13px] text-faint">
+          {item.isStaple ? 'Grundnahrungsmittel · leer' : 'Leer'}
+        </span>
+      </button>
+      {listed ? (
+        <span className="flex shrink-0 items-center gap-1 text-[13.5px] text-faint">
+          <Check size={15} /> Auf der Liste
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onList}
+          className="flex min-h-[40px] shrink-0 items-center gap-1.5 text-[14px] font-medium text-accent active:opacity-60"
+        >
+          <ShoppingCart size={16} /> Auf die Liste
+        </button>
+      )}
     </div>
   );
 }
