@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
   Package,
@@ -24,8 +24,15 @@ const TABS: Tab[] = [
   { to: '/profil', label: 'Profil', icon: User },
 ];
 
+/** The settings are reached from the profile, so they belong to that tab. */
+function useActiveTab(): (to: string, isActive: boolean) => boolean {
+  const { pathname } = useLocation();
+  return (to, isActive) => isActive || (to === '/profil' && pathname === '/einstellungen');
+}
+
 /** Bottom tab bar – primary navigation, thumb-reachable, 44px+ targets. */
 export function TabBar(): ReactNode {
+  const active = useActiveTab();
   return (
     <nav className="border-t border-border bg-surface pb-safe">
       <div className="mx-auto flex max-w-3xl items-stretch justify-around">
@@ -36,13 +43,13 @@ export function TabBar(): ReactNode {
             className={({ isActive }) =>
               cx(
                 'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 pt-2 transition-colors',
-                isActive ? 'text-accent' : 'text-faint',
+                active(tab.to, isActive) ? 'text-accent' : 'text-faint',
               )
             }
           >
             {({ isActive }) => (
               <>
-                <tab.icon size={22} strokeWidth={isActive ? 2.4 : 2} />
+                <tab.icon size={22} strokeWidth={active(tab.to, isActive) ? 2.4 : 2} />
                 <span className="text-[11px] font-medium">{tab.label}</span>
               </>
             )}
@@ -59,6 +66,7 @@ export function TabBar(): ReactNode {
  * portrait, a labelled sidebar in landscape.
  */
 export function SideNav(): ReactNode {
+  const active = useActiveTab();
   return (
     <nav
       aria-label="Hauptnavigation"
@@ -77,7 +85,7 @@ export function SideNav(): ReactNode {
             className={({ isActive }) =>
               cx(
                 'flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-xl transition-colors lg:min-h-[44px] lg:flex-row lg:justify-start lg:gap-3 lg:px-3',
-                isActive
+                active(tab.to, isActive)
                   ? 'bg-accent-soft text-accent'
                   : 'text-muted active:bg-surface-2',
               )
@@ -85,7 +93,7 @@ export function SideNav(): ReactNode {
           >
             {({ isActive }) => (
               <>
-                <tab.icon size={22} strokeWidth={isActive ? 2.4 : 2} />
+                <tab.icon size={22} strokeWidth={active(tab.to, isActive) ? 2.4 : 2} />
                 <span className="text-[11px] font-medium lg:text-[15px]">
                   {tab.label}
                 </span>
