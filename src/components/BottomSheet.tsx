@@ -1,10 +1,17 @@
-import { type ReactNode, useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { type PointerEvent, type ReactNode, useEffect } from 'react';
+import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import { X } from 'lucide-react';
+
+/** Pulled down this far – or flicked down this fast – the sheet closes. */
+const CLOSE_DISTANCE = 90;
+const CLOSE_VELOCITY = 600;
 
 /**
  * Vaul-style bottom sheet for input flows. Spring-based, touch-friendly,
  * only animates transform/opacity. Honours prefers-reduced-motion via CSS.
+ *
+ * Like an iOS sheet it can be pulled down to close – by its top bar only,
+ * so scrolling the content never drags the sheet along.
  */
 export function BottomSheet({
   open,
@@ -17,6 +24,14 @@ export function BottomSheet({
   title?: string;
   children: ReactNode;
 }): ReactNode {
+  const drag = useDragControls();
+
+  const startDrag = (e: PointerEvent<HTMLDivElement>) => {
+    // The close button is a button, not a handle.
+    if ((e.target as HTMLElement).closest('button')) return;
+    drag.start(e);
+  };
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -53,8 +68,20 @@ export function BottomSheet({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+            drag="y"
+            dragControls={drag}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.9 }}
+            dragSnapToOrigin
+            onDragEnd={(_, info) => {
+              if (info.offset.y > CLOSE_DISTANCE || info.velocity.y > CLOSE_VELOCITY) onClose();
+            }}
           >
-            <div className="flex items-center justify-between px-5 pb-2 pt-4">
+            <div
+              className="flex cursor-grab touch-none select-none items-center justify-between px-5 pb-2 pt-4 active:cursor-grabbing"
+              onPointerDown={startDrag}
+            >
               <div
                 className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-border"
                 aria-hidden

@@ -17,6 +17,19 @@ import type {
   RecipeIngredient,
 } from '@/db/types';
 
+/** Usual time of each meal – for entries added afterwards to an earlier day. */
+const MEAL_TIMES: Record<MealType, string> = {
+  breakfast: '08:00',
+  lunch: '12:30',
+  snack: '15:30',
+  dinner: '19:00',
+};
+
+/** When to book something eaten on an earlier day (YYYY-MM-DD). */
+export function bookingTimeFor(day: string, meal: MealType): string {
+  return new Date(`${day}T${MEAL_TIMES[meal]}:00`).toISOString();
+}
+
 /** Time-of-day based default meal type, used to pre-select the picker. */
 export function defaultMealType(d = new Date()): MealType {
   const h = d.getHours();

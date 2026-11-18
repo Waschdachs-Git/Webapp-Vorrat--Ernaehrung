@@ -34,6 +34,13 @@ export function daysUntil(isoDate: string): number {
   return Math.round((target.getTime() - now.getTime()) / 86_400_000);
 }
 
+/** The calendar day `delta` days before (negative) or after a date. */
+export function shiftDay(isoDate: string, delta: number): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  d.setDate(d.getDate() + delta);
+  return toISODate(d);
+}
+
 /** UTC ISO bounds of a local calendar day — for indexed range queries. */
 export function localDayBounds(isoDate: string): { start: string; end: string } {
   return {

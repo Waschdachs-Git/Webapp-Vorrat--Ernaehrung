@@ -16,6 +16,7 @@ import {
 } from './InventoryForm';
 import { lookupBarcode } from '@/lib/openfoodfacts';
 import { runAutoRestock } from '@/lib/actions';
+import { findByBarcode, storePurchase } from '@/lib/stock';
 import { nowISO } from '@/lib/date';
 import { formatAmount, parseDecimal } from '@/lib/format';
 import { namesMatch, sharesFoodWord } from '@/lib/match';
@@ -160,23 +161,7 @@ export function PutAwaySheet({
     try {
       // Stock, list and restock entries change together or not at all.
       const undoStock = await db.transaction('rw', db.inventory, db.shoppingList, async () => {
-        let undo: () => Promise<unknown>;
-        // Read again: the amount may have changed since the scan.
-        const current = mergeId !== undefined ? await db.inventory.get(mergeId) : undefined;
-        if (current?.id !== undefined) {
-          // The older package runs out first, so its date stays the one to watch.
-          const oldDate = current.amount > 0 ? current.bestBefore : undefined;
-          await db.inventory.update(current.id, {
-            ...fresh,
-            addedAt: current.addedAt,
-            amount: Math.round((current.amount + fresh.amount) * 10) / 10,
-            bestBefore: earliest(oldDate, fresh.bestBefore),
-          });
-          undo = () => db.inventory.put(current);
-        } else {
-          const id = await db.inventory.add(fresh as InventoryItem);
-          undo = () => db.inventory.delete(id);
-        }
+        const undo = await storePurchase(fresh, mergeId);
         if (entry?.id !== undefined) await db.shoppingList.delete(entry.id);
         await runAutoRestock();
         return undo;
@@ -373,7 +358,7 @@ function stapleFromEntry(entry: ShoppingItem | undefined, unit: Unit): Partial<D
 /** Same barcode, or else exactly the same name, already in stock. */
 async function findExisting(barcode?: string, name?: string): Promise<InventoryItem | undefined> {
   if (barcode) {
-    const hit = await db.inventory.where('barcode').equals(barcode).first();
+    const hit = await findByBarcode(barcode);
     if (hit) return hit;
   }
   const key = name?.trim().toLowerCase();
@@ -393,10 +378,4 @@ function bestEntry(name: string, entries: ShoppingItem[]): ShoppingItem | undefi
     entries.find((e) => namesMatch(e.name, name)) ??
     entries.find((e) => sharesFoodWord(e.name, name))
   );
-}
-
-function earliest(a?: string, b?: string): string | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  return a < b ? a : b;
 }

@@ -11,7 +11,7 @@ export function PageHeader({
   action,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   action?: ReactNode;
 }): ReactNode {
   return (
@@ -22,7 +22,7 @@ export function PageHeader({
         </h1>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      {subtitle && <p className="mt-1.5 text-[15px] text-muted">{subtitle}</p>}
+      {subtitle && <div className="mt-1.5 text-[15px] text-muted">{subtitle}</div>}
     </header>
   );
 }
